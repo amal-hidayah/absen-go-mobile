@@ -67,7 +67,7 @@ function Landing() {
       </header>
 
       <main className="mx-auto max-w-6xl px-5">
-        <section className="grid items-center gap-10 py-14 md:grid-cols-2 md:py-20">
+        <section className="grid items-center gap-10 pt-6 pb-14 md:grid-cols-2 md:pt-4 md:pb-20">
           <div>
 
             <h1 className="text-4xl leading-tight font-bold md:text-5xl">
@@ -90,56 +90,23 @@ function Landing() {
             </div>
           </div>
 
-          <div className="relative">
-            <div className="rounded-3xl border bg-card p-6 shadow-[var(--shadow-lift)]">
-              <div className="flex items-center justify-between border-b pb-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Kartu Presensi Siswa</p>
-                  <p className="font-display text-lg font-semibold">Andi Pratama</p>
-                  <p className="text-sm text-muted-foreground">X IPA 1 · NIS 2024001</p>
-                </div>
-                <div className="grid size-20 place-items-center rounded-xl bg-secondary">
-                  <QrCode className="size-12 text-secondary-foreground" />
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                {[
-                  ["Siti Nurhaliza", "06:48", "Hadir"],
-                  ["Budi Santoso", "07:12", "Terlambat"],
-                  ["Dewi Lestari", "06:55", "Hadir"],
-                ].map(([nama, jam, status]) => (
-                  <div
-                    key={nama}
-                    className="flex items-center justify-between rounded-xl bg-muted px-4 py-3 text-sm"
-                  >
-                    <span className="font-medium">{nama}</span>
-                    <span className="flex items-center gap-3">
-                      <span className="text-muted-foreground">{jam}</span>
-                      <span
-                        className={
-                          status === "Hadir"
-                            ? "rounded-full bg-success/15 px-2 py-0.5 text-xs font-semibold text-success"
-                            : "rounded-full bg-warning/20 px-2 py-0.5 text-xs font-semibold text-warning-foreground"
-                        }
-                      >
-                        {status}
-                      </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="relative flex justify-center">
+            <img 
+              src="/hero.png" 
+              alt="Ilustrasi AbsenGo" 
+              className="w-full max-w-md h-auto object-contain drop-shadow-xl md:max-w-none" 
+            />
           </div>
         </section>
 
-        <section className="grid gap-4 pb-20 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="grid grid-cols-2 gap-3 pb-20 sm:grid-cols-3 lg:gap-4">
           {fitur.map((f) => (
-            <div key={f.title} className="rounded-2xl border bg-card p-5 shadow-[var(--shadow-soft)]">
-              <span className="grid size-10 place-items-center rounded-xl bg-secondary text-secondary-foreground">
-                <f.icon className="size-5" />
+            <div key={f.title} className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)] sm:p-5">
+              <span className="grid size-8 place-items-center rounded-lg bg-secondary text-secondary-foreground sm:size-10 sm:rounded-xl">
+                <f.icon className="size-4 sm:size-5" />
               </span>
-              <h3 className="mt-4 text-base font-semibold">{f.title}</h3>
-              <p className="mt-1.5 text-sm text-muted-foreground">{f.desc}</p>
+              <h3 className="mt-3 text-sm font-semibold leading-tight sm:mt-4 sm:text-base">{f.title}</h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground sm:text-sm">{f.desc}</p>
             </div>
           ))}
         </section>

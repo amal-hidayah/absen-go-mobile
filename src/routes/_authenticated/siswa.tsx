@@ -162,20 +162,20 @@ function SiswaPage() {
         <table className="w-full text-sm">
           <thead className="bg-muted/60 text-left text-xs tracking-wide text-muted-foreground uppercase">
             <tr>
-              <th className="px-5 py-3">NIS</th>
-              <th className="px-5 py-3">Nama</th>
-              <th className="px-5 py-3">Kelas</th>
-              <th className="px-5 py-3">Status</th>
-              <th className="px-5 py-3 text-right">Aksi</th>
+              <th className="whitespace-nowrap px-5 py-3">NIS</th>
+              <th className="whitespace-nowrap px-5 py-3">Nama</th>
+              <th className="whitespace-nowrap px-5 py-3">Kelas</th>
+              <th className="whitespace-nowrap px-5 py-3">Status</th>
+              <th className="whitespace-nowrap px-5 py-3 text-right">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {tersaring.map((s) => (
               <tr key={s.id}>
-                <td className="px-5 py-3 font-mono text-xs">{s.nis}</td>
-                <td className="px-5 py-3 font-medium">{s.full_name}</td>
-                <td className="px-5 py-3 text-muted-foreground">{s.class_name}</td>
-                <td className="px-5 py-3">
+                <td className="whitespace-nowrap px-5 py-3 font-mono text-xs">{s.nis}</td>
+                <td className="whitespace-nowrap px-5 py-3 font-medium">{s.full_name}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">{s.class_name}</td>
+                <td className="whitespace-nowrap px-5 py-3">
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                       s.active ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
@@ -184,7 +184,7 @@ function SiswaPage() {
                     {s.active ? "Aktif" : "Non-aktif"}
                   </span>
                 </td>
-                <td className="px-5 py-3">
+                <td className="whitespace-nowrap px-5 py-3">
                   <div className="flex justify-end gap-1">
                     <Button size="icon" variant="ghost" onClick={() => bukaEdit(s)} aria-label="Edit">
                       <Pencil className="size-4" />
@@ -270,10 +270,13 @@ function SiswaPage() {
 
       <Dialog open={kartu} onOpenChange={setKartu}>
         <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Kartu QR siswa ({tersaring.length})</DialogTitle>
+          <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-8">
+            <DialogTitle>Kartu QR ({tersaring.length})</DialogTitle>
+            <Button onClick={() => window.print()} size="sm" className="gap-2">
+              <Printer className="size-4" /> Cetak
+            </Button>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 mt-4">
             {tersaring.map((s) => (
               <div key={s.id} className="rounded-xl border bg-card p-3 text-center">
                 <QRCodeCanvas value={s.qr_code} size={112} className="mx-auto" />
@@ -284,11 +287,6 @@ function SiswaPage() {
               </div>
             ))}
           </div>
-          <DialogFooter>
-            <Button onClick={() => window.print()}>
-              <Printer className="size-4" /> Cetak
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 

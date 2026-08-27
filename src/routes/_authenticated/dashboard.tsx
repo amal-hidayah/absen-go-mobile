@@ -107,12 +107,12 @@ function Dashboard() {
         </div>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        {stats.map((s) => (
-          <div key={s.label} className="rounded-2xl border bg-card p-5 shadow-[var(--shadow-soft)]">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:gap-4">
+        {stats.map((s, i) => (
+          <div key={s.label} className={`rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)] sm:p-5 ${i === 0 ? "col-span-2 lg:col-span-1" : ""}`}>
             <s.icon className={`size-5 ${s.tone}`} />
             <p className="mt-3 font-display text-3xl font-bold">{isLoading ? "–" : s.value}</p>
-            <p className="text-sm text-muted-foreground">{s.label}</p>
+            <p className="text-xs text-muted-foreground sm:text-sm">{s.label}</p>
           </div>
         ))}
       </div>
