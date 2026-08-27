@@ -204,8 +204,12 @@ function Landing() {
         </section>
       </main>
 
-      <footer className="border-t py-8 text-center text-sm text-muted-foreground">
-        AbsenGo · Presensi siswa berbasis QR code
+      <footer className="border-t py-8 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+        <p>AbsenGo · Presensi siswa berbasis QR code</p>
+        <div className="flex items-center gap-2">
+          <span>Dibuat oleh</span>
+          <img src="/kardigi.png" alt="Kardigi" className="h-5 w-auto object-contain" />
+        </div>
       </footer>
     </div>
   );
