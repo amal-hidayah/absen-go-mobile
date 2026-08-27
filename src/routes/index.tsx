@@ -208,7 +208,9 @@ function Landing() {
         <p>AbsenGo · Presensi siswa berbasis QR code</p>
         <div className="flex items-center gap-2">
           <span>Dibuat oleh</span>
-          <img src="/kardigi.png" alt="Kardigi" className="h-5 w-auto object-contain" />
+          <a href="https://kardigi.tech" target="_blank" rel="noreferrer" className="hover:opacity-80 transition-opacity">
+            <img src="/kardigi.png" alt="Kardigi" className="h-5 w-auto object-contain" />
+          </a>
         </div>
       </footer>
     </div>

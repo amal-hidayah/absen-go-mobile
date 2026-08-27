@@ -81,7 +81,9 @@ function AuthPage() {
       </div>
       <div className="mt-8 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
         <p>Dibuat oleh</p>
-        <img src="/kardigi.png" alt="Kardigi" className="h-5 w-auto object-contain" />
+        <a href="https://kardigi.tech" target="_blank" rel="noreferrer" className="hover:opacity-80 transition-opacity">
+          <img src="/kardigi.png" alt="Kardigi" className="h-5 w-auto object-contain" />
+        </a>
       </div>
     </div>
   );
