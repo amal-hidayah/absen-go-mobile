@@ -174,3 +174,41 @@
 [id*="lovable"] {
   display: none !important;
 }
+
+/* Pengaturan Cetak (Print) Khusus */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  body {
+    background-color: white !important;
+  }
+
+  /* Mengatasi Radix UI yang mengunci scroll saat modal terbuka */
+  body[data-scroll-locked] {
+    overflow: visible !important;
+    position: static !important;
+  }
+
+  #print-area, #print-area * {
+    visibility: visible;
+  }
+  
+  #print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    display: grid !important;
+    gap: 12px !important;
+    grid-template-columns: repeat(4, 1fr) !important;
+  }
+
+  /* Menghindari kartu terpotong di tengah antar halaman */
+  #print-area > div {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    border: 1px solid #ccc !important;
+  }
+}

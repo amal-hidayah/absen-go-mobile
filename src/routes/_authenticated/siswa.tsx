@@ -273,7 +273,7 @@ function SiswaPage() {
           <DialogHeader>
             <DialogTitle>Kartu QR siswa ({tersaring.length})</DialogTitle>
           </DialogHeader>
-          <div id="area-kartu" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {tersaring.map((s) => (
               <div key={s.id} className="rounded-xl border bg-card p-3 text-center">
                 <QRCodeCanvas value={s.qr_code} size={112} className="mx-auto" />
@@ -291,6 +291,19 @@ function SiswaPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Area Khusus Print (Tersembunyi di layar normal, muncul saat diprint) */}
+      <div id="print-area" className="hidden">
+        {tersaring.map((s) => (
+          <div key={s.id} className="rounded-xl p-3 text-center flex flex-col items-center justify-center">
+            <QRCodeCanvas value={s.qr_code} size={130} className="mx-auto" />
+            <p className="mt-2 text-sm font-bold text-black">{s.full_name}</p>
+            <p className="text-xs text-gray-600">
+              {s.class_name} · {s.nis}
+            </p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
