@@ -81,7 +81,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Button>
       </aside>
 
-      <main className="min-w-0 flex-1 px-5 py-6 md:px-8 md:py-8">{children}</main>
+      <main className="min-w-0 flex-1 px-5 py-6 flex flex-col md:px-8 md:py-8">
+        <div className="flex-1">
+          {children}
+        </div>
+        <footer className="mt-auto border-t pt-8 mt-12 pb-2 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground print:hidden">
+          <div className="flex items-center gap-2">
+            <span>Dibuat oleh</span>
+            <img src="/kardigi.png" alt="Kardigi" className="h-5 w-auto object-contain" />
+          </div>
+        </footer>
+      </main>
     </div>
   );
 }
