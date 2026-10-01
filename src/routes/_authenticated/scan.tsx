@@ -15,6 +15,7 @@ import {
   User,
   ShieldAlert,
   ArrowLeft,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -34,26 +35,24 @@ export const Route = createFileRoute("/_authenticated/scan")({
   head: () => ({
     meta: [
       { title: "Scan Presensi — AbsenGo" },
-      { name: "description", content: "Arahkan kamera HP ke layar kantor untuk absen masuk atau pulang." },
+      {
+        name: "description",
+        content: "Arahkan kamera HP ke layar kantor untuk absen masuk atau pulang.",
+      },
     ],
   }),
   component: ScanPage,
 });
 
-type HasilPresensi = {
-  ok: boolean;
-  nama: string;
-  tipe: "masuk" | "pulang" | "info";
-  jam: string;
-  status?: string;
-  pesan: string;
-};
-
 const REGION_ID = "qr-reader-region";
 
 function playBeep(success: boolean) {
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioContextCtor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+    const ctx = new AudioContextCtor();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
@@ -75,15 +74,20 @@ function playBeep(success: boolean) {
       osc.start();
       osc.stop(ctx.currentTime + 0.35);
     }
-  } catch (e) {}
+  } catch {
+    // Browser tidak mendukung Web Audio — beep dilewati saja
+  }
 }
 
 function ScanPage() {
   const queryClient = useQueryClient();
   const tanggal = todayJakarta();
   const [aktif, setAktif] = useState(false);
-  const [hasil, setHasil] = useState<HasilPresensi | null>(null);
-  const [flash, setFlash] = useState<{ status: "success" | "error"; nama: string } | null>(null);
+  const [flash, setFlash] = useState<{
+    status: "success" | "error" | "info";
+    nama: string;
+    detail?: string;
+  } | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const busyRef = useRef(false);
   const lastScanTimeRef = useRef<number>(0);
@@ -96,7 +100,11 @@ function ScanPage() {
   const { data: settings } = useQuery<CompanySettings | null>({
     queryKey: ["company_settings"],
     queryFn: async () => {
-      const { data } = await supabase.from("company_settings").select("*").eq("id", 1).maybeSingle();
+      const { data } = await supabase
+        .from("company_settings")
+        .select("*")
+        .eq("id", 1)
+        .maybeSingle();
       return (data as unknown as CompanySettings) || null;
     },
   });
@@ -132,13 +140,6 @@ function ScanPage() {
           playBeep(false);
           const pesanError = verif.reason || "QR Code tidak valid!";
           setFlash({ status: "error", nama: pesanError });
-          setHasil({
-            ok: false,
-            nama: "Gagal Scan",
-            tipe: "info",
-            jam: nowTimeJakarta(),
-            pesan: pesanError,
-          });
           toast.error(pesanError);
           return;
         }
@@ -162,7 +163,11 @@ function ScanPage() {
 
         if (!existing) {
           // CLOCK IN (MASUK)
-          const { status, lateMinutes } = hitungKeterlambatan(jamSekarang, jamMasukSetting, toleransi);
+          const { status, lateMinutes } = hitungKeterlambatan(
+            jamSekarang,
+            jamMasukSetting,
+            toleransi,
+          );
           const { error: insErr } = await supabase.from("company_attendance").insert({
             employee_id: currentEmployee.id,
             attend_date: tanggal,
@@ -180,15 +185,12 @@ function ScanPage() {
               ? `Terlambat ${lateMinutes} menit (Batas toleransi: ${jamMasukSetting.slice(0, 5)})`
               : "Tepat Waktu. Selamat bekerja!";
 
-          setFlash({ status: "success", nama: `Masuk: ${currentEmployee.full_name}` });
-          setHasil({
-            ok: true,
-            nama: currentEmployee.full_name,
-            tipe: "masuk",
-            jam: jamSekarang.slice(0, 5),
-            status,
-            pesan: keterangan,
+          setFlash({
+            status: "success",
+            nama: `Masuk: ${currentEmployee.full_name}`,
+            detail: keterangan,
           });
+          void stopKamera();
           toast.success(`Absen Masuk Berhasil (${jamSekarang.slice(0, 5)})`);
         } else if (!existing.clock_out) {
           // CLOCK OUT (PULANG)
@@ -203,35 +205,30 @@ function ScanPage() {
           if (updErr) throw updErr;
 
           playBeep(true);
-          setFlash({ status: "success", nama: `Pulang: ${currentEmployee.full_name}` });
-          setHasil({
-            ok: true,
-            nama: currentEmployee.full_name,
-            tipe: "pulang",
-            jam: jamSekarang.slice(0, 5),
-            status: existing.status,
-            pesan: "Absen Pulang tercatat. Terima kasih atas kerja keras Anda hari ini!",
+          setFlash({
+            status: "success",
+            nama: `Pulang: ${currentEmployee.full_name}`,
+            detail: "Absen pulang tercatat. Terima kasih atas kerja keras Anda!",
           });
+          void stopKamera();
           toast.success(`Absen Pulang Berhasil (${jamSekarang.slice(0, 5)})`);
         } else {
           // SUDAH LENGKAP KEDUANYA
           playBeep(false);
-          setHasil({
-            ok: true,
-            nama: currentEmployee.full_name,
-            tipe: "info",
-            jam: jamSekarang.slice(0, 5),
-            status: existing.status,
-            pesan: `Anda sudah absen masuk (${existing.clock_in?.slice(0, 5)}) dan pulang (${existing.clock_out?.slice(0, 5)}) hari ini.`,
+          setFlash({
+            status: "info",
+            nama: "Presensi hari ini sudah lengkap",
+            detail: `Anda sudah absen masuk (${existing.clock_in?.slice(0, 5)}) dan pulang (${existing.clock_out?.slice(0, 5)}).`,
           });
+          void stopKamera();
           toast.info("Anda sudah menyelesaikan presensi masuk dan pulang hari ini.");
         }
 
         queryClient.invalidateQueries({ queryKey: ["presensi_saya_hari_ini"] });
         queryClient.invalidateQueries({ queryKey: ["recent_kiosk_attendance"] });
-      } catch (err: any) {
+      } catch (err) {
         playBeep(false);
-        toast.error(err.message || "Gagal mencatat presensi");
+        toast.error(err instanceof Error ? err.message : "Gagal mencatat presensi");
       } finally {
         setTimeout(() => {
           busyRef.current = false;
@@ -242,6 +239,7 @@ function ScanPage() {
   );
 
   async function mulaiKamera() {
+    setFlash(null);
     try {
       const scanner = new Html5Qrcode(REGION_ID);
       scannerRef.current = scanner;
@@ -271,7 +269,9 @@ function ScanPage() {
       try {
         await scannerRef.current.stop();
         scannerRef.current.clear();
-      } catch (e) {}
+      } catch {
+        // Kamera sudah berhenti / tidak aktif — aman diabaikan
+      }
       scannerRef.current = null;
     }
     setAktif(false);
@@ -285,6 +285,13 @@ function ScanPage() {
     };
   }, []);
 
+  // Overlay hasil scan menutup sendiri supaya tidak menutupi kamera
+  useEffect(() => {
+    if (!flash) return;
+    const timer = setTimeout(() => setFlash(null), 3000);
+    return () => clearTimeout(timer);
+  }, [flash]);
+
   // JIKA YANG MEMBUKA ADALAH ADMIN:
   if (isAdmin) {
     return (
@@ -296,14 +303,18 @@ function ScanPage() {
         <div className="space-y-2">
           <h1 className="text-2xl font-bold">Halaman Khusus Karyawan</h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Akun Anda terdaftar sebagai <span className="font-semibold text-foreground">Admin / HRD</span>. Fitur Scan Kamera ini digunakan oleh karyawan di smartphone masing-masing untuk absen di monitor kantor.
+            Akun Anda terdaftar sebagai{" "}
+            <span className="font-semibold text-foreground">Admin / HRD</span>. Fitur Scan Kamera
+            ini digunakan oleh karyawan di smartphone masing-masing untuk absen di monitor kantor.
           </p>
         </div>
 
         <div className="p-4 rounded-2xl border bg-muted/30 text-xs text-muted-foreground text-left space-y-2">
           <p className="font-semibold text-foreground">Tugas Admin:</p>
           <ul className="list-disc pl-4 space-y-1">
-            <li>Membuka <strong>Layar Monitor Kiosk</strong> di TV / PC lobi kantor.</li>
+            <li>
+              Membuka <strong>Layar Monitor Kiosk</strong> di TV / PC lobi kantor.
+            </li>
             <li>Mengelola data karyawan dan tarif gaji harian.</li>
             <li>Melihat rekap kehadiran dan menghitung payroll gaji harian.</li>
           </ul>
@@ -331,7 +342,9 @@ function ScanPage() {
       <header className="text-center space-y-1.5">
         <h1 className="text-2xl font-bold tracking-tight">Scan Presensi Kantor</h1>
         <p className="text-xs sm:text-sm text-muted-foreground">
-          Arahkan kamera HP ke <span className="font-semibold text-foreground">Layar Monitor Kantor</span> untuk absen masuk atau pulang.
+          Arahkan kamera HP ke{" "}
+          <span className="font-semibold text-foreground">Layar Monitor Kantor</span> untuk absen
+          masuk atau pulang.
         </p>
       </header>
 
@@ -345,7 +358,8 @@ function ScanPage() {
             <div>
               <p className="text-sm font-semibold">{currentEmployee.full_name}</p>
               <p className="text-xs text-muted-foreground">
-                NIK: <span className="font-mono">{currentEmployee.nik}</span> · {currentEmployee.department}
+                NIK: <span className="font-mono">{currentEmployee.nik}</span> ·{" "}
+                {currentEmployee.department}
               </p>
             </div>
           </div>
@@ -372,21 +386,41 @@ function ScanPage() {
 
       {/* Area Scanner Kamera */}
       <div className="relative overflow-hidden rounded-3xl border bg-slate-950 p-4 text-center shadow-lg">
-        {/* Flash Effect on Scan */}
+        {/* Hasil scan: muncul sebentar lalu menutup sendiri (3 detik) */}
         {flash && (
           <div
-            className={`absolute inset-0 z-30 flex items-center justify-center p-6 text-white font-bold text-center transition-opacity duration-500 ${
-              flash.status === "success" ? "bg-emerald-600/90" : "bg-rose-600/90"
+            className={`absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 p-6 text-white font-bold text-center transition-opacity duration-500 ${
+              flash.status === "success"
+                ? "bg-emerald-600/90"
+                : flash.status === "info"
+                  ? "bg-amber-500/90"
+                  : "bg-rose-600/90"
             }`}
           >
             <div>
-              {flash.status === "success" ? (
-                <CheckCircle2 className="size-12 mx-auto mb-2 text-white animate-bounce" />
-              ) : (
+              {flash.status === "error" ? (
                 <AlertCircle className="size-12 mx-auto mb-2 text-white" />
+              ) : flash.status === "info" ? (
+                <Info className="size-12 mx-auto mb-2 text-white" />
+              ) : (
+                <CheckCircle2 className="size-12 mx-auto mb-2 text-white" />
               )}
               <p className="text-lg">{flash.nama}</p>
+
+              <p className="text-xs font-normal text-white/80 mt-1">
+                {flash.detail ||
+                  (flash.status === "success" ? "Presensi tersimpan" : "Silakan coba lagi")}
+              </p>
             </div>
+
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => setFlash(null)}
+              className="bg-white text-slate-900 hover:bg-white/90"
+            >
+              Lanjut
+            </Button>
           </div>
         )}
 
@@ -419,7 +453,12 @@ function ScanPage() {
               <Camera className="size-4 mr-2" /> Buka Kamera
             </Button>
           ) : (
-            <Button size="lg" variant="destructive" onClick={stopKamera} className="w-full max-w-xs">
+            <Button
+              size="lg"
+              variant="destructive"
+              onClick={stopKamera}
+              className="w-full max-w-xs"
+            >
               <CameraOff className="size-4 mr-2" /> Matikan Kamera
             </Button>
           )}
@@ -460,32 +499,10 @@ function ScanPage() {
                 {presensiSaya.clock_out ? presensiSaya.clock_out.slice(0, 5) : "Belum Absen"}
               </p>
               <span className="inline-block mt-1 text-[10px] text-muted-foreground">
-                {presensiSaya.clock_out ? "Selesai Kerja" : `Jadwal Pulang: ${settings?.work_end_time?.slice(0, 5) || "17:00"}`}
+                {presensiSaya.clock_out
+                  ? "Selesai Kerja"
+                  : `Jadwal Pulang: ${settings?.work_end_time?.slice(0, 5) || "17:00"}`}
               </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Kartu Hasil Scan */}
-      {hasil && (
-        <div
-          className={`rounded-2xl border p-4 shadow-[var(--shadow-soft)] ${
-            hasil.ok ? "bg-emerald-50/50 border-emerald-200 dark:bg-emerald-950/20" : "bg-rose-50 border-rose-200"
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            {hasil.ok ? (
-              <CheckCircle2 className="size-5 text-emerald-600 shrink-0 mt-0.5" />
-            ) : (
-              <AlertCircle className="size-5 text-rose-600 shrink-0 mt-0.5" />
-            )}
-            <div>
-              <p className="font-semibold text-foreground text-sm">{hasil.nama}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{hasil.pesan}</p>
-              {hasil.jam && (
-                <p className="text-xs font-mono font-medium text-foreground mt-1">Waktu: {hasil.jam}</p>
-              )}
             </div>
           </div>
         </div>
