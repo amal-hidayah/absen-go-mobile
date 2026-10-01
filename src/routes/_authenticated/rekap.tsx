@@ -19,6 +19,7 @@ import { StatusBadge } from "./dashboard";
 import {
   downloadCsv,
   formatTanggal,
+  hariIniDihitung,
   toCsv,
   todayJakarta,
   type CompanyAttendance,
@@ -82,6 +83,11 @@ function RekapPage() {
   const totalTidakHadir = tersaring.filter((r) =>
     ["sakit", "izin", "alfa"].includes(r.status),
   ).length;
+  // Hari yang absennya masih setengah jadi: dihitung hadir di rekap ini, tapi
+  // belum dibayar karena gaji butuh masuk dan pulang sekaligus.
+  const totalBelumLengkap = tersaring.filter(
+    (r) => (r.status === "hadir" || r.status === "terlambat") && !hariIniDihitung(r),
+  ).length;
 
   function exportCsv() {
     const csv = toCsv(
@@ -95,6 +101,7 @@ function RekapPage() {
         "Jam Pulang": r.clock_out ? r.clock_out.slice(0, 5) : "-",
         "Terlambat (Menit)": r.late_minutes || 0,
         Status: r.status,
+        "Dihitung Gaji": hariIniDihitung(r) ? "Ya" : "Belum",
         Keterangan: r.note ?? "",
       })),
     );
@@ -110,6 +117,7 @@ function RekapPage() {
           <>
             {tersaring.length} catatan · {totalHadir} hadir tepat · {totalTerlambat} terlambat ·{" "}
             {totalTidakHadir} izin/sakit
+            {totalBelumLengkap > 0 ? ` · ${totalBelumLengkap} belum lengkap` : ""}
           </>
         }
         actions={
@@ -214,6 +222,21 @@ function RekapPage() {
                 <span className="text-xs text-muted-foreground">Tepat waktu</span>
               ),
           },
+          {
+            header: "Gaji",
+            render: (r) =>
+              r.status === "izin" || r.status === "sakit" || r.status === "alfa" ? (
+                <span className="text-xs text-muted-foreground">Tidak dibayar</span>
+              ) : hariIniDihitung(r) ? (
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                  Dihitung
+                </span>
+              ) : (
+                <span className="text-xs font-medium text-rose-700 dark:text-rose-400">
+                  Belum lengkap
+                </span>
+              ),
+          },
           { header: "Status", align: "right", render: (r) => <StatusBadge status={r.status} /> },
         ]}
         renderCard={(r) => (
@@ -246,6 +269,11 @@ function RekapPage() {
                 </span>
               ) : null}
             </div>
+            {(r.status === "hadir" || r.status === "terlambat") && !hariIniDihitung(r) ? (
+              <p className="text-xs leading-relaxed text-rose-700 dark:text-rose-400">
+                Belum absen {r.clock_in ? "pulang" : "masuk"}, belum dihitung gaji.
+              </p>
+            ) : null}
           </div>
         )}
         empty={

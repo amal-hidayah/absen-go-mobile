@@ -2,7 +2,7 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import { ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,7 +57,7 @@ function KioskPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Ambil pengaturan kantor
-  const { data: settings } = useQuery<CompanySettings | null>({
+  const { data: settings, isError: settingsGagal } = useQuery<CompanySettings | null>({
     queryKey: ["company_settings"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -72,6 +72,11 @@ function KioskPage() {
     },
     refetchInterval: 30000,
   });
+
+  // Secret yang dipakai di layar ini harus sama persis dengan yang-held server,
+  // kalau tidak semua pindai akan ditolak. Jadi kegagalan load tidak boleh
+  // diam-diam diganti secret bawaan.
+  const secretValid = !settingsGagal && Boolean(settings?.qr_secret);
 
   // Ambil presensi terbaru hari ini
   const { data: recentAttendances = [] } = useQuery<CompanyAttendance[]>({
@@ -206,7 +211,7 @@ function KioskPage() {
           <div className="w-[min(78vw,30rem,44dvh)]">
             <div className="rounded-3xl bg-white px-5 py-6 shadow-kiosk sm:px-7 sm:py-7">
               <div ref={qrRef} className="aspect-square w-full">
-                {qrValue && qrSize > 0 ? (
+                {secretValid ? (
                   <QRCodeCanvas
                     value={qrValue}
                     size={qrSize}
@@ -217,27 +222,38 @@ function KioskPage() {
                     aria-label="Kode presensi yang berganti tiap 5 detik"
                   />
                 ) : (
-                  <div className="flex size-full items-center justify-center rounded-2xl bg-slate-100 text-xs text-slate-600">
-                    Menyiapkan kode...
+                  <div className="flex size-full flex-col items-center justify-center gap-2 rounded-2xl bg-rose-50 px-6 text-center">
+                    <AlertTriangle className="size-7 text-rose-700" aria-hidden />
+                    <p className="text-sm font-semibold text-rose-900">
+                      Pengaturan kantor tidak terbaca
+                    </p>
+                    <p className="text-xs leading-relaxed text-rose-800">
+                      Kode presensi tidak ditampilkan karena kunci QR tidak bisa dimuat. Muat ulang
+                      halaman ini.
+                    </p>
                   </div>
                 )}
               </div>
 
-              <div className="mt-6 flex items-baseline justify-between gap-4 text-xs font-medium text-slate-600">
-                <span>Kode berganti dalam</span>
-                <span className="font-mono text-sm font-semibold text-slate-700">
-                  {detikTersisa} detik
-                </span>
-              </div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-                {/* key={qrValue} memutar ulang sapuan setiap kode berganti.
-                    QR-nya sendiri tidak dianimasikan: scan yang sedang jalan
-                    tidak boleh gagal karena kodenya berkedip. */}
-                <div
-                  key={qrValue}
-                  className="h-full w-full origin-left rounded-full bg-teal-600 animate-qr-sweep"
-                />
-              </div>
+              {secretValid ? (
+                <>
+                  <div className="mt-6 flex items-baseline justify-between gap-4 text-xs font-medium text-slate-600">
+                    <span>Kode berganti dalam</span>
+                    <span className="font-mono text-sm font-semibold text-slate-700">
+                      {detikTersisa} detik
+                    </span>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                    {/* key={qrValue} memutar ulang sapuan setiap kode berganti.
+                        QR-nya sendiri tidak dianimasikan: scan yang sedang jalan
+                        tidak boleh gagal karena kodenya berkedip. */}
+                    <div
+                      key={qrValue}
+                      className="h-full w-full origin-left rounded-full bg-teal-600 animate-qr-sweep"
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
           </div>
 

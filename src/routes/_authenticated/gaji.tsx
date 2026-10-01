@@ -18,6 +18,7 @@ import {
 import {
   formatRupiah,
   formatTanggal,
+  hariIniDihitung,
   toCsv,
   downloadCsv,
   type Employee,
@@ -64,6 +65,8 @@ interface RekapGajiRow {
   izin: number;
   sakit: number;
   alfa: number;
+  /** Hari berstatus hadir/terlambat yang absen masuk atau pulangnya belum lengkap. */
+  belumLengkap: number;
   totalGaji: number;
 }
 
@@ -132,13 +135,19 @@ function GajiPage() {
 
     return employees.map((emp) => {
       const list = attMap.get(emp.id) || [];
-      const tepatWaktu = list.filter((a) => a.status === "hadir").length;
-      const terlambat = list.filter((a) => a.status === "terlambat").length;
       const izin = list.filter((a) => a.status === "izin").length;
       const sakit = list.filter((a) => a.status === "sakit").length;
       const alfa = list.filter((a) => a.status === "alfa").length;
 
-      // Kehadiran kerja dihitung hanya dari hadir tepat waktu dan terlambat.
+      // Gaji masuk hanya kalau absen masuk dan absen pulang keduanya tercatat,
+      // jadi hari yang masih setengah jadi tidak ikut dihitung.
+      const hariKerja = list.filter((a) => hariIniDihitung(a));
+      const tepatWaktu = hariKerja.filter((a) => a.status === "hadir").length;
+      const terlambat = hariKerja.filter((a) => a.status === "terlambat").length;
+      const belumLengkap = list.filter(
+        (a) => (a.status === "hadir" || a.status === "terlambat") && !hariIniDihitung(a),
+      ).length;
+
       const totalHadir = tepatWaktu + terlambat;
       const dailySalary = Number(emp.daily_salary) || 0;
 
@@ -150,6 +159,7 @@ function GajiPage() {
         izin,
         sakit,
         alfa,
+        belumLengkap,
         totalGaji: totalHadir * dailySalary,
       };
     });
@@ -175,6 +185,7 @@ function GajiPage() {
       "Total Hari Hadir": row.totalHadir,
       "Tepat Waktu": row.tepatWaktu,
       Terlambat: row.terlambat,
+      "Belum Lengkap (tidak dibayar)": row.belumLengkap,
       Izin: row.izin,
       Sakit: row.sakit,
       Alfa: row.alfa,
@@ -193,7 +204,8 @@ function GajiPage() {
         subtitle={
           <>
             Gaji dihitung dari kehadiran riil:{" "}
-            <span className="font-semibold text-foreground">hari hadir × tarif harian</span>.
+            <span className="font-semibold text-foreground">hari hadir × tarif harian</span>. Sehari
+            baru dihitung kalau absen masuk dan absen pulang keduanya tercatat.
           </>
         }
         actions={
@@ -317,6 +329,11 @@ function GajiPage() {
                   Tepat waktu: {row.tepatWaktu}
                 </p>
                 <p className="text-amber-700 dark:text-amber-400">Terlambat: {row.terlambat}</p>
+                {row.belumLengkap > 0 ? (
+                  <p className="text-rose-700 dark:text-rose-400">
+                    Belum lengkap: {row.belumLengkap} hari
+                  </p>
+                ) : null}
                 {row.izin + row.sakit + row.alfa > 0 ? (
                   <p className="text-muted-foreground">
                     Izin {row.izin} · Sakit {row.sakit} · Alfa {row.alfa}
@@ -368,6 +385,13 @@ function GajiPage() {
               <span aria-hidden>·</span>
               <span className="font-semibold text-foreground">{row.totalHadir} hari hadir</span>
             </div>
+
+            {row.belumLengkap > 0 ? (
+              <p className="text-xs leading-relaxed text-rose-700 dark:text-rose-400">
+                {row.belumLengkap} hari tidak dibayar karena absen masuk atau pulangnya belum
+                lengkap.
+              </p>
+            ) : null}
 
             <Button
               variant="outline"
@@ -443,6 +467,12 @@ function GajiPage() {
                   <span>Hadir terlambat</span>
                   <span>{slipModal.terlambat} hari</span>
                 </div>
+                {slipModal.belumLengkap > 0 ? (
+                  <div className="flex items-center justify-between gap-3 pl-2 text-[11px] text-rose-700 dark:text-rose-400">
+                    <span>Belum lengkap, tidak dibayar</span>
+                    <span>{slipModal.belumLengkap} hari</span>
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex items-center justify-between gap-3 pt-1 text-base font-bold">

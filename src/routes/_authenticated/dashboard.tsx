@@ -41,7 +41,8 @@ import { Input } from "@/components/ui/input";
 import {
   formatRupiah,
   formatTanggal,
-  nowTimeJakarta,
+  hariIniDihitung,
+  selisihMenit,
   todayJakarta,
   type CompanyAttendance,
   type CompanySettings,
@@ -62,11 +63,33 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
+interface FormManual {
+  employee_id: string;
+  status: string;
+  note: string;
+  jam_masuk: string;
+  jam_pulang: string;
+}
+
+/**
+ * Entri manual harus memuat jam masuk dan jam pulang, karena gaji hanya
+ * dihitung kalau keduanya tercatat. Default diambil dari jam kerja kantor.
+ */
+function formManualKosong(settings: CompanySettings | null | undefined): FormManual {
+  return {
+    employee_id: "",
+    status: "sakit",
+    note: "",
+    jam_masuk: settings?.work_start_time?.slice(0, 5) || "08:00",
+    jam_pulang: settings?.work_end_time?.slice(0, 5) || "17:00",
+  };
+}
+
 function Dashboard() {
   const tanggal = todayJakarta();
   const queryClient = useQueryClient();
   const [openManual, setOpenManual] = useState(false);
-  const [manualForm, setManualForm] = useState({ employee_id: "", status: "sakit", note: "" });
+  const [manualForm, setManualForm] = useState<FormManual>(() => formManualKosong(null));
   const [loadingSeed, setLoadingSeed] = useState(false);
 
   const { data: authProfile } = useAuthProfile();
@@ -84,6 +107,15 @@ function Dashboard() {
       return (data as unknown as CompanySettings) || null;
     },
   });
+
+  const jamMasukKantor = settings?.work_start_time?.slice(0, 5) || "08:00";
+  const jamPulangKantor = settings?.work_end_time?.slice(0, 5) || "17:00";
+  // Status "hadir" dan "terlambat" dihitung gaji, jadi keduanya butuh jam
+  // masuk dan jam pulang yang tercatat.
+  const manualBekerja = manualForm.status === "hadir" || manualForm.status === "terlambat";
+  const manualTelat = manualBekerja
+    ? Math.max(0, selisihMenit(manualForm.jam_masuk, jamMasukKantor))
+    : 0;
 
   const {
     data: adminData,
@@ -151,8 +183,14 @@ function Dashboard() {
       const presensiHariIni = (hariIniRes.data as unknown as CompanyAttendance) || null;
       const riwayatBulanIni = (bulanIniRes.data as unknown as CompanyAttendance[]) || [];
 
+      // Gaji hanya masuk kalau absen masuk dan absen pulang keduanya tercatat,
+      // jadi angka di bawah ini harus sama dengan rekap gaji.
+      const hadir = (r: CompanyAttendance) => r.status === "hadir" || r.status === "terlambat";
       const totalHadirBulanIni = riwayatBulanIni.filter(
-        (r) => r.status === "hadir" || r.status === "terlambat",
+        (r) => hadir(r) && hariIniDihitung(r),
+      ).length;
+      const belumLengkapBulanIni = riwayatBulanIni.filter(
+        (r) => hadir(r) && !hariIniDihitung(r),
       ).length;
 
       const rate = Number(currentEmployee!.daily_salary) || 0;
@@ -161,6 +199,7 @@ function Dashboard() {
         presensiHariIni,
         riwayatBulanIni,
         totalHadirBulanIni,
+        belumLengkapBulanIni,
         estimasiGaji: totalHadirBulanIni * rate,
       };
     },
@@ -173,15 +212,24 @@ function Dashboard() {
       return;
     }
 
+    const bekerja = manualForm.status === "hadir" || manualForm.status === "terlambat";
+    if (bekerja && (!manualForm.jam_masuk || !manualForm.jam_pulang)) {
+      toast.error("Jam masuk dan jam pulang wajib diisi untuk status hadir atau terlambat");
+      return;
+    }
+    if (bekerja && manualForm.jam_pulang < manualForm.jam_masuk) {
+      toast.error("Jam pulang tidak boleh lebih awal dari jam masuk");
+      return;
+    }
+
     const { data: auth } = await supabase.auth.getUser();
     const { error } = await supabase.from("company_attendance").insert({
       employee_id: manualForm.employee_id,
       attend_date: tanggal,
-      clock_in:
-        manualForm.status === "hadir" || manualForm.status === "terlambat"
-          ? nowTimeJakarta()
-          : null,
+      clock_in: bekerja ? `${manualForm.jam_masuk}:00` : null,
+      clock_out: bekerja ? `${manualForm.jam_pulang}:00` : null,
       status: manualForm.status,
+      late_minutes: manualTelat,
       note: manualForm.note || null,
       recorded_by: auth.user?.id || null,
     });
@@ -197,7 +245,7 @@ function Dashboard() {
 
     toast.success("Presensi manual berhasil dicatat");
     setOpenManual(false);
-    setManualForm({ employee_id: "", status: "sakit", note: "" });
+    setManualForm(formManualKosong(settings));
     queryClient.invalidateQueries({ queryKey: ["dashboard_corporate_admin"] });
   }
 
@@ -322,7 +370,12 @@ function Dashboard() {
                   <Tv className="size-4" aria-hidden /> Layar Monitor Kiosk
                 </Link>
               </Button>
-              <Button onClick={() => setOpenManual(true)}>
+              <Button
+                onClick={() => {
+                  setManualForm(formManualKosong(settings));
+                  setOpenManual(true);
+                }}
+              >
                 <Plus className="size-4" aria-hidden /> Input Izin / Cuti
               </Button>
             </>
@@ -531,6 +584,48 @@ function Dashboard() {
                 </Select>
               </div>
 
+              {manualBekerja && (
+                <div className="space-y-1.5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="jam_masuk">Jam Masuk</Label>
+                      <Input
+                        id="jam_masuk"
+                        type="time"
+                        value={manualForm.jam_masuk}
+                        onChange={(e) =>
+                          setManualForm({ ...manualForm, jam_masuk: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="jam_pulang">Jam Pulang</Label>
+                      <Input
+                        id="jam_pulang"
+                        type="time"
+                        value={manualForm.jam_pulang}
+                        onChange={(e) =>
+                          setManualForm({ ...manualForm, jam_pulang: e.target.value })
+                        }
+                        required
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Gaji hanya dihitung kalau jam masuk dan jam pulang keduanya terisi. Jam kerja
+                    kantor {jamMasukKantor} to {jamPulangKantor}.
+                    {manualTelat > 0 && (
+                      <>
+                        {" "}
+                        Jam masuk ini {manualTelat} menit lebih lambat dari {jamMasukKantor}, jadi
+                        pilih status Terlambat.
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <Label htmlFor="note">Keterangan / Alasan (opsional)</Label>
                 <Input
@@ -621,6 +716,16 @@ function Dashboard() {
             </p>
           </div>
         </div>
+
+        {(employeeData?.belumLengkapBulanIni ?? 0) > 0 && (
+          <p className="mt-3 border-t border-white/20 pt-3 text-xs leading-relaxed text-emerald-50/85">
+            <span className="font-semibold text-white">
+              {employeeData?.belumLengkapBulanIni} hari
+            </span>{" "}
+            belum masuk hitungan gaji karena absen masuk atau pulangnya belum lengkap. Selesaikan
+            dengan memindai layar monitor.
+          </p>
+        )}
       </div>
 
       <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)] sm:p-5">
@@ -647,7 +752,9 @@ function Dashboard() {
               {p?.clock_out ? p.clock_out.slice(0, 5) : "--:--"}
             </p>
             <span className="block text-[11px] leading-snug text-muted-foreground">
-              {p?.clock_out ? "Presensi hari ini selesai" : "Scan monitor sebelum pulang"}
+              {p?.clock_out
+                ? "Presensi hari ini selesai"
+                : `Absen pulang dibuka pukul ${jamPulangKantor}`}
             </span>
           </div>
         </div>

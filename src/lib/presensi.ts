@@ -77,40 +77,24 @@ export function formatRupiah(amount: number): string {
   }).format(amount || 0);
 }
 
-/** Ubah "HH:MM:SS" menjadi total menit sejak tengah malam */
-export function clockToMinutes(waktu: string): number {
-  const [jam = 0, menit = 0, detik = 0] = waktu.split(":").map(Number);
-  return jam * 60 + menit + detik / 60;
-}
-
-/** Hitung status keterlambatan dan durasi telat dalam menit */
-export function hitungKeterlambatan(
-  waktuScan: string, // "HH:MM:SS"
-  jamMasuk: string, // "08:00:00"
-  toleransiMenit: number = 15,
-): { status: "hadir" | "terlambat"; lateMinutes: number } {
-  const scanTotalMinutes = clockToMinutes(waktuScan);
-  const startTotalMinutes = clockToMinutes(jamMasuk);
-  const batasToleransiMinutes = startTotalMinutes + toleransiMenit;
-
-  if (scanTotalMinutes > batasToleransiMinutes) {
-    const late = Math.round(scanTotalMinutes - startTotalMinutes);
-    return { status: "terlambat", lateMinutes: Math.max(late, 1) };
-  }
-
-  return { status: "hadir", lateMinutes: 0 };
-}
-
-/** Hash sederhana untuk window dinamis QR 5 detik */
+/**
+ * Hash payload QR untuk window dinamis 5 detik.
+ *
+ * WAJIB IDENTIK dengan absengo_qr_hash() di
+ * supabase/migrations/*_record_attendance_rpc.sql. Karena scan diverifikasi
+ * di server, kedua sisi harus menghasilkan angka yang sama persis.
+ *
+ * Modulus bilangan prima dipakai supaya tidak ada overflow integer 32-bit
+ * di JavaScript maupun 64-bit di PostgreSQL. Versi lama memakai bitshift JS
+ * yang tidak ada padanannya yang persis di SQL.
+ */
 export function generateQrHash(secret: string, windowTime: number): string {
   const str = `${secret}-${windowTime}`;
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0;
+    hash = (hash * 31 + str.charCodeAt(i)) % 1000000007;
   }
-  return Math.abs(hash).toString(36);
+  return String(hash);
 }
 
 /** Membuat payload string untuk QR code di layar kantor (berganti tiap 5 detik) */
@@ -124,36 +108,33 @@ export function createQrPayload(secret: string = "absen-corp-secret-token"): str
   });
 }
 
-/** Verifikasi payload string dari scanner HP karyawan */
-export function verifyQrPayload(
-  payloadStr: string,
-  secret: string = "absen-corp-secret-token",
-): { valid: boolean; reason?: string } {
-  try {
-    const data = JSON.parse(payloadStr);
-    if (data.app !== "ABSENGO-CORP" || typeof data.w !== "number" || !data.h) {
-      return { valid: false, reason: "Bukan QR Code resmi presensi kantor." };
-    }
+/** Bentuk hasil record_attendance() di server */
+export interface HasilAbsen {
+  ok: boolean;
+  kode?: string;
+  pesan?: string;
+  aksi?: "masuk" | "pulang";
+  jam?: string;
+  jam_masuk?: string;
+  jam_pulang?: string;
+  jam_masuk_tercatat?: string;
+  sekarang?: string;
+  status?: string;
+  late_minutes?: number;
+}
 
-    const currentWindow = Math.floor(Date.now() / 5000);
-    // Toleransi hingga 3 window (sekitar 15-20 detik) untuk mengatasi jeda waktu scan & clock device
-    if (Math.abs(currentWindow - data.w) > 3) {
-      return {
-        valid: false,
-        reason:
-          "QR Code sudah kadaluarsa (berubah setiap 5 detik). Silakan scan ulang layar kantor.",
-      };
-    }
+/** Satu hari baru dihitung gaji kalau absen masuk DAN absen pulang keduanya ada. */
+export function hariIniDihitung(att: Pick<CompanyAttendance, "clock_in" | "clock_out">): boolean {
+  return Boolean(att.clock_in && att.clock_out);
+}
 
-    const expectedHash = generateQrHash(secret, data.w);
-    if (data.h !== expectedHash) {
-      return { valid: false, reason: "Kode QR tidak cocok dengan server kantor." };
-    }
-
-    return { valid: true };
-  } catch (e) {
-    return { valid: false, reason: "Format QR Code tidak dikenali." };
-  }
+/** Selisih menit antara dua waktu "HH:MM" atau "HH:MM:SS" (nilai a dikurangi b). */
+export function selisihMenit(a: string, b: string): number {
+  const keMenit = (waktu: string) => {
+    const [jam = 0, menit = 0] = waktu.split(":").map(Number);
+    return jam * 60 + menit;
+  };
+  return keMenit(a) - keMenit(b);
 }
 
 /** Konversi object list ke string CSV */

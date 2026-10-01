@@ -198,6 +198,10 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: boolean;
       };
+      record_attendance: {
+        Args: { p_qr_payload: string };
+        Returns: Json;
+      };
       resolve_login_email: {
         Args: { _username: string };
         Returns: string | null;

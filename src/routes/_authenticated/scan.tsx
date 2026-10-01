@@ -11,23 +11,19 @@ import {
   Tv,
   LogOut,
   LogIn,
-  ShieldCheck,
   User,
   ShieldAlert,
   ArrowLeft,
-  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import {
   formatTanggal,
-  hitungKeterlambatan,
-  nowTimeJakarta,
   todayJakarta,
-  verifyQrPayload,
   type CompanyAttendance,
   type CompanySettings,
+  type HasilAbsen,
 } from "@/lib/presensi";
 import { useAuthProfile } from "@/hooks/use-auth-profile";
 
@@ -45,6 +41,35 @@ export const Route = createFileRoute("/_authenticated/scan")({
 });
 
 const REGION_ID = "qr-reader-region";
+
+/**
+ * Judul pendek untuk setiap penolakan dari server, supaya kalimat panjang yang
+ * dikembalikan database tidak mendominasi overlay kamera.
+ */
+const JUDUL_KODE: Record<string, string> = {
+  SUDAH_LENGKAP: "Presensi sudah lengkap",
+  SUDAH_TERCATAT: "Presensi sudah tercatat",
+  BELUM_WAKTU_PULANG: "Belum waktunya pulang",
+  BELUM_BUKA: "Presensi belum dibuka",
+  KADALUARSA: "QR sudah kadaluarsa",
+  TIDAK_COCOK: "QR tidak dikenali",
+  BUKAN_QR: "QR bukan milik kantor",
+  FORMAT: "QR tidak terbaca",
+  TANPA_PROFIL: "Profil belum terdaftar",
+  NONAKTIF: "Akun sedang tidak aktif",
+  PENGATURAN: "Pengaturan belum lengkap",
+};
+
+/** Penolakan ini tidak perlu diulang: menutup kamera dan mengarahkan ke kerjaan. */
+const KODE_TERHENTI = new Set([
+  "SUDAH_LENGKAP",
+  "SUDAH_TERCATAT",
+  "BELUM_WAKTU_PULANG",
+  "BELUM_BUKA",
+  "TANPA_PROFIL",
+  "NONAKTIF",
+  "PENGATURAN",
+]);
 
 function playBeep(success: boolean) {
   try {
@@ -85,8 +110,10 @@ function ScanPage() {
   const [aktif, setAktif] = useState(false);
   const [flash, setFlash] = useState<{
     status: "success" | "error" | "info";
-    nama: string;
+    judul: string;
+    pesan: string;
     detail?: string;
+    lanjut?: boolean;
   } | null>(null);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const busyRef = useRef(false);
@@ -133,109 +160,98 @@ function ScanPage() {
       lastScanTimeRef.current = now;
 
       try {
-        const secret = settings?.qr_secret || "absen-corp-secret-token";
-        const verif = verifyQrPayload(decodedText, secret);
+        // Seluruh keputusan (verifikasi QR, jam masuk, jam pulang) diambil
+        // server. Browser hanya menampilkan jawabannya.
+        const { data, error } = await supabase.rpc("record_attendance", {
+          p_qr_payload: decodedText,
+        });
+        if (error) throw error;
 
-        if (!verif.valid) {
-          playBeep(false);
-          const pesanError = verif.reason || "QR Code tidak valid!";
-          setFlash({ status: "error", nama: pesanError });
-          toast.error(pesanError);
-          return;
-        }
+        const hasil = data as unknown as HasilAbsen;
+        const nama = currentEmployee?.full_name || "Anda";
 
-        if (!currentEmployee) {
-          toast.error("Data profil karyawan Anda belum terdaftar di sistem.");
-          return;
-        }
-
-        const jamSekarang = nowTimeJakarta();
-        const jamMasukSetting = settings?.work_start_time || "08:00:00";
-        const toleransi = settings?.late_tolerance_minutes ?? 15;
-
-        // Cek status presensi hari ini
-        const { data: existing } = await supabase
-          .from("company_attendance")
-          .select("*")
-          .eq("employee_id", currentEmployee.id)
-          .eq("attend_date", tanggal)
-          .maybeSingle();
-
-        if (!existing) {
-          // CLOCK IN (MASUK)
-          const { status, lateMinutes } = hitungKeterlambatan(
-            jamSekarang,
-            jamMasukSetting,
-            toleransi,
-          );
-          const { error: insErr } = await supabase.from("company_attendance").insert({
-            employee_id: currentEmployee.id,
-            attend_date: tanggal,
-            clock_in: jamSekarang,
-            status,
-            late_minutes: lateMinutes,
-            recorded_by: authProfile?.user?.id || null,
-          });
-
-          if (insErr) throw insErr;
-
+        if (hasil?.ok && hasil.aksi === "masuk") {
           playBeep(true);
-          const keterangan =
-            status === "terlambat"
-              ? `Terlambat ${lateMinutes} menit (Batas toleransi: ${jamMasukSetting.slice(0, 5)})`
-              : "Tepat Waktu. Selamat bekerja!";
-
+          const terlambat = hasil.status === "terlambat";
           setFlash({
             status: "success",
-            nama: `Masuk: ${currentEmployee.full_name}`,
-            detail: keterangan,
+            judul: `Masuk ${hasil.jam}`,
+            pesan: `Masuk: ${nama}`,
+            detail: terlambat
+              ? `Terlambat ${hasil.late_minutes} menit. Pulang pukul ${hasil.jam_pulang}.`
+              : `Tepat waktu. Pulang pukul ${hasil.jam_pulang}.`,
           });
           void stopKamera();
-          toast.success(`Absen Masuk Berhasil (${jamSekarang.slice(0, 5)})`);
-        } else if (!existing.clock_out) {
-          // CLOCK OUT (PULANG)
-          const { error: updErr } = await supabase
-            .from("company_attendance")
-            .update({
-              clock_out: jamSekarang,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existing.id);
-
-          if (updErr) throw updErr;
-
+          toast.success(`Absen masuk tercatat ${hasil.jam}`);
+        } else if (hasil?.ok && hasil.aksi === "pulang") {
           playBeep(true);
           setFlash({
             status: "success",
-            nama: `Pulang: ${currentEmployee.full_name}`,
+            judul: `Pulang ${hasil.jam}`,
+            pesan: `Pulang: ${nama}`,
             detail: "Absen pulang tercatat. Terima kasih atas kerja keras Anda!",
           });
           void stopKamera();
-          toast.success(`Absen Pulang Berhasil (${jamSekarang.slice(0, 5)})`);
+          toast.success(`Absen pulang tercatat ${hasil.jam}`);
         } else {
-          // SUDAH LENGKAP KEDUANYA
+          const kode = hasil?.kode || "FORMAT";
+          const terminal = KODE_TERHENTI.has(kode);
           playBeep(false);
-          setFlash({
-            status: "info",
-            nama: "Presensi hari ini sudah lengkap",
-            detail: `Anda sudah absen masuk (${existing.clock_in?.slice(0, 5)}) dan pulang (${existing.clock_out?.slice(0, 5)}).`,
-          });
-          void stopKamera();
-          toast.info("Anda sudah menyelesaikan presensi masuk dan pulang hari ini.");
+
+          const detail =
+            kode === "SUDAH_LENGKAP"
+              ? `Masuk ${hasil?.jam_masuk} · Pulang ${hasil?.jam_pulang}`
+              : kode === "BELUM_WAKTU_PULANG"
+                ? `Masuk Anda tercatat pukul ${hasil?.jam_masuk_tercatat}. Sekarang ${hasil?.sekarang}.`
+                : kode === "BELUM_BUKA"
+                  ? `Presensi dibuka pukul ${hasil?.jam_masuk}.`
+                  : terminal
+                    ? "Silakan cek dasbor Anda atau hubungi admin."
+                    : "Arahkan kembali kamera ke layar kantor.";
+
+          if (terminal) {
+            setFlash({
+              status: kode === "NONAKTIF" || kode === "PENGATURAN" ? "error" : "info",
+              judul: JUDUL_KODE[kode] || "Presensi tidak tercatat",
+              pesan: hasil?.pesan || "Presensi tidak dapat dicatat.",
+              detail,
+            });
+            void stopKamera();
+            toast.info(hasil?.pesan || "Presensi tidak tercatat.");
+          } else {
+            // QR rusak atau kadaluarsa: kamera tetap hidup supaya bisa langsung
+            // dipindai ulang tanpa menekan tombol apa pun. Toast sengaja tidak
+            // muncul supaya kode yang salah tidak memenuhi layar notifikasi.
+            setFlash({
+              status: "error",
+              judul: JUDUL_KODE[kode] || "QR tidak terbaca",
+              pesan: hasil?.pesan || "Format QR Code tidak dikenali.",
+              detail,
+              lanjut: true,
+            });
+          }
         }
 
         queryClient.invalidateQueries({ queryKey: ["presensi_saya_hari_ini"] });
         queryClient.invalidateQueries({ queryKey: ["recent_kiosk_attendance"] });
       } catch (err) {
         playBeep(false);
-        toast.error(err instanceof Error ? err.message : "Gagal mencatat presensi");
+        const pesan = err instanceof Error ? err.message : "Gagal mencatat presensi";
+        setFlash({
+          status: "error",
+          judul: "Gagal menghubungi server",
+          pesan,
+          detail: "Periksa koneksi internet, lalu pindai ulang.",
+          lanjut: true,
+        });
+        toast.error(pesan);
       } finally {
         setTimeout(() => {
           busyRef.current = false;
         }, 1500);
       }
     },
-    [currentEmployee, authProfile, settings, tanggal, queryClient],
+    [currentEmployee, queryClient],
   );
 
   async function mulaiKamera() {
@@ -288,7 +304,7 @@ function ScanPage() {
   // Overlay hasil scan menutup sendiri supaya tidak menutupi kamera
   useEffect(() => {
     if (!flash) return;
-    const timer = setTimeout(() => setFlash(null), 3000);
+    const timer = setTimeout(() => setFlash(null), 4000);
     return () => clearTimeout(timer);
   }, [flash]);
 
@@ -387,28 +403,32 @@ function ScanPage() {
         {/* Hasil scan: muncul sebentar lalu menutup sendiri (3 detik) */}
         {flash && (
           <div
-            className={`absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 p-6 text-white font-bold text-center transition-opacity duration-500 ${
+            className={`absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 p-6 text-center text-white ${
               flash.status === "success"
-                ? "bg-emerald-600/90"
+                ? "bg-emerald-600/95"
                 : flash.status === "info"
-                  ? "bg-amber-500/90"
-                  : "bg-rose-600/90"
+                  ? "bg-amber-500/95"
+                  : "bg-rose-600/95"
             }`}
           >
-            <div>
-              {flash.status === "error" ? (
-                <AlertCircle className="size-12 mx-auto mb-2 text-white" />
+            <div className="max-w-[18rem] space-y-2">
+              {flash.status === "success" ? (
+                <CheckCircle2 className="mx-auto size-11" aria-hidden />
               ) : flash.status === "info" ? (
-                <Info className="size-12 mx-auto mb-2 text-white" />
+                <Clock className="mx-auto size-11" aria-hidden />
               ) : (
-                <CheckCircle2 className="size-12 mx-auto mb-2 text-white" />
+                <AlertCircle className="mx-auto size-11" aria-hidden />
               )}
-              <p className="text-lg">{flash.nama}</p>
 
-              <p className="text-xs font-normal text-white/80 mt-1">
-                {flash.detail ||
-                  (flash.status === "success" ? "Presensi tersimpan" : "Silakan coba lagi")}
+              <p className="text-lg font-bold leading-snug text-balance">{flash.judul}</p>
+              <p className="text-sm font-medium leading-snug text-pretty text-white/90">
+                {flash.pesan}
               </p>
+              {flash.detail && (
+                <p className="text-xs font-normal leading-relaxed text-pretty text-white/75">
+                  {flash.detail}
+                </p>
+              )}
             </div>
 
             <Button
@@ -417,7 +437,7 @@ function ScanPage() {
               onClick={() => setFlash(null)}
               className="bg-white text-slate-900 hover:bg-white/90"
             >
-              Lanjut
+              {flash.lanjut ? "Lanjut" : "Tutup"}
             </Button>
           </div>
         )}
