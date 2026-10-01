@@ -21,14 +21,10 @@ export const Route = createFileRoute("/kiosk")({
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) throw redirect({ to: "/auth" });
 
-    const { data: employee } = await supabase
-      .from("employees")
-      .select("role")
-      .or(`user_id.eq.${data.user.id},email.ilike.${data.user.email ?? ""}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (!employee || employee.role !== "admin") throw redirect({ to: "/dashboard" });
+    // Sumber role: login_accounts (lihat use-auth-profile). Admin dibuat di
+    // Supabase Auth dan tidak selalu punya baris di tabel employees.
+    const { data: isAdmin, error: adminError } = await supabase.rpc("is_admin");
+    if (adminError || !isAdmin) throw redirect({ to: "/dashboard" });
 
     return { user: data.user };
   },
