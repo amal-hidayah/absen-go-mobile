@@ -9,13 +9,12 @@ import {
   Tv,
   LogIn,
   LogOut,
-  Briefcase,
+  CalendarOff,
   User,
   Plus,
   FileSpreadsheet,
   Calendar,
   Sparkles,
-  ArrowRight,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -36,6 +35,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DataList } from "@/components/data-list";
+import { PageHeader } from "@/components/page-header";
+import { Input } from "@/components/ui/input";
 import {
   formatRupiah,
   formatTanggal,
@@ -50,8 +52,11 @@ import { useAuthProfile } from "@/hooks/use-auth-profile";
 export const Route = createFileRoute("/_authenticated/dashboard")({
   head: () => ({
     meta: [
-      { title: "Dashboard — AbsenGo" },
-      { name: "description", content: "Ringkasan kehadiran karyawan dan estimasi gaji harian." },
+      { title: "Dashboard · AbsenGo" },
+      {
+        name: "description",
+        content: "Ringkasan kehadiran karyawan dan estimasi gaji harian.",
+      },
     ],
   }),
   component: Dashboard,
@@ -68,7 +73,6 @@ function Dashboard() {
   const isAdmin = authProfile?.isAdmin ?? false;
   const currentEmployee = authProfile?.employee;
 
-  // Ambil pengaturan perusahaan
   const { data: settings } = useQuery<CompanySettings | null>({
     queryKey: ["company_settings"],
     queryFn: async () => {
@@ -81,8 +85,12 @@ function Dashboard() {
     },
   });
 
-  // Ambil data dashboard kehadiran kantor hari ini (untuk Admin)
-  const { data: adminData, isLoading: loadingAdmin } = useQuery({
+  const {
+    data: adminData,
+    isLoading: loadingAdmin,
+    isError: adminGagal,
+    refetch: refetchAdmin,
+  } = useQuery({
     queryKey: ["dashboard_corporate_admin", tanggal],
     enabled: isAdmin,
     queryFn: async () => {
@@ -112,8 +120,12 @@ function Dashboard() {
     },
   });
 
-  // Ambil data presensi pribadi (untuk Karyawan)
-  const { data: employeeData, isLoading: loadingEmp } = useQuery({
+  const {
+    data: employeeData,
+    isLoading: loadingEmp,
+    isError: empGagal,
+    refetch: refetchEmp,
+  } = useQuery({
     queryKey: ["dashboard_corporate_employee", currentEmployee?.id, tanggal],
     enabled: !isAdmin && !!currentEmployee?.id,
     queryFn: async () => {
@@ -144,13 +156,12 @@ function Dashboard() {
       ).length;
 
       const rate = Number(currentEmployee!.daily_salary) || 0;
-      const estimasiGaji = totalHadirBulanIni * rate;
 
       return {
         presensiHariIni,
         riwayatBulanIni,
         totalHadirBulanIni,
-        estimasiGaji,
+        estimasiGaji: totalHadirBulanIni * rate,
       };
     },
   });
@@ -218,7 +229,7 @@ function Dashboard() {
         department: "IT",
         position: "Web Developer",
         daily_salary: 200000,
-        role: "admin",
+        role: "employee",
       },
       {
         nik: "EMP004",
@@ -253,203 +264,233 @@ function Dashboard() {
     const totalKaryawan = adminData?.totalKaryawan ?? 0;
     const belum = Math.max(totalKaryawan - rows.length, 0);
 
+    // Warna hanya untuk status (masuk / terlambat); angka lain netral agar
+    // lima kartu ini tidak berlomba menjadi fokus.
     const stats = [
       {
-        label: "Total Karyawan Aktif",
+        label: "Karyawan Aktif",
         value: totalKaryawan,
         icon: Users,
-        iconBg: "bg-primary/10 text-primary",
+        tone: "bg-primary/10 text-primary",
       },
       {
         label: "Sudah Masuk Kerja",
         value: totalMasuk,
         icon: CheckCircle2,
-        iconBg: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        tone: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
       },
       {
         label: "Terlambat",
         value: terlambat,
         icon: Clock,
-        iconBg: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+        tone: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
       },
       {
         label: "Izin / Sakit / Alfa",
         value: tidakHadir,
-        icon: Briefcase,
-        iconBg: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+        icon: CalendarOff,
+        tone: "bg-muted text-muted-foreground",
       },
       {
         label: "Belum Presensi",
         value: belum,
         icon: UserX,
-        iconBg: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+        tone: "bg-muted text-muted-foreground",
       },
     ];
 
+    const displayed = rows.slice(0, 10);
+
     return (
-      <div className="mx-auto max-w-6xl space-y-6">
-        {/* Header Admin Terpadu & Rapi */}
-        <header className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">
-              Dashboard Presensi
-            </h1>
-            <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-2 mt-0.5">
-              <Calendar className="size-3.5 text-primary" />
-              <span>{formatTanggal(tanggal)}</span>
-              <span>·</span>
+      <div className="mx-auto max-w-6xl space-y-5 sm:space-y-6">
+        <PageHeader
+          title="Dashboard Presensi"
+          subtitle={
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Calendar className="size-3.5 text-primary" aria-hidden />
+              {formatTanggal(tanggal)}
+              <span aria-hidden>·</span>
               <span className="font-medium text-foreground">
                 {settings?.company_name || "Perusahaan"}
               </span>
-            </p>
-          </div>
+            </span>
+          }
+          actions={
+            <>
+              <Button variant="outline" asChild>
+                <Link to="/kiosk" target="_blank">
+                  <Tv className="size-4" aria-hidden /> Layar Monitor Kiosk
+                </Link>
+              </Button>
+              <Button onClick={() => setOpenManual(true)}>
+                <Plus className="size-4" aria-hidden /> Input Izin / Cuti
+              </Button>
+            </>
+          }
+        />
 
-          <div className="flex items-center gap-2.5">
-            <Button variant="outline" size="sm" asChild className="h-9">
-              <Link to="/kiosk" target="_blank">
-                <Tv className="size-4 mr-2" /> Layar Monitor Kiosk
-              </Link>
-            </Button>
-            <Button size="sm" onClick={() => setOpenManual(true)} className="h-9">
-              <Plus className="size-4 mr-1.5" /> Input Izin / Cuti
-            </Button>
-          </div>
-        </header>
-
-        {/* Banner Quick Onboarding jika belum ada karyawan */}
-        {totalKaryawan === 0 && !loadingAdmin && (
-          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-1">
-              <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
-                <Sparkles className="size-4 text-primary" /> Mulai Siapkan Data Karyawan Anda
+        {totalKaryawan === 0 && !loadingAdmin && !adminGagal && (
+          <div className="flex flex-col gap-4 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="space-y-1.5">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-foreground">
+                <Sparkles className="size-4 text-primary" aria-hidden /> Mulai siapkan data karyawan
               </h2>
-              <p className="text-xs text-muted-foreground max-w-xl leading-relaxed">
-                Belum ada data karyawan terdaftar. Tambahkan data karyawan atau klik tombol di
-                sebelah kanan untuk mengisi contoh data agar sistem siap digunakan.
+              <p className="text-xs leading-relaxed text-muted-foreground text-pretty">
+                Belum ada karyawan terdaftar. Tambahkan satu per satu, atau muat data contoh agar
+                alur presensi bisa langsung dicoba.
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={muatContohData} disabled={loadingSeed}>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                onClick={muatContohData}
+                disabled={loadingSeed}
+                className="shrink-0"
+              >
                 {loadingSeed ? "Memuat..." : "Muat Data Contoh"}
               </Button>
-              <Button size="sm" asChild>
-                <Link to="/karyawan">
-                  Kelola Karyawan <ArrowRight className="size-3.5 ml-1.5" />
-                </Link>
+              <Button asChild className="shrink-0">
+                <Link to="/karyawan">Kelola Karyawan</Link>
               </Button>
             </div>
           </div>
         )}
 
-        {/* Grid Kartu Statistik Modern & Proporsional */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
           {stats.map((s, i) => (
             <div
               key={s.label}
-              className={`rounded-2xl border bg-card p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-md ${
+              className={`rounded-2xl border bg-card p-3.5 sm:p-5 ${
                 i === 0 ? "col-span-2 sm:col-span-1" : ""
               }`}
             >
-              <div className="flex items-center justify-between">
-                <span className={`p-2 rounded-xl ${s.iconBg}`}>
-                  <s.icon className="size-4 sm:size-5" />
-                </span>
-              </div>
-              <p className="mt-3 text-3xl font-extrabold tracking-tight font-sans text-foreground">
+              <span
+                className={`inline-grid size-9 place-items-center rounded-xl sm:size-10 ${s.tone}`}
+              >
+                <s.icon className="size-4.5 sm:size-5" aria-hidden />
+              </span>
+              <p className="mt-2.5 font-sans text-2xl font-extrabold leading-none tracking-tight text-foreground sm:mt-3 sm:text-3xl">
                 {loadingAdmin ? "–" : s.value}
               </p>
-              <p className="text-xs text-muted-foreground font-medium mt-1">{s.label}</p>
+              <p className="mt-1.5 text-xs font-medium leading-snug text-muted-foreground text-pretty">
+                {s.label}
+              </p>
             </div>
           ))}
         </div>
 
-        {/* Tabel Presensi Karyawan Hari Ini */}
-        <section className="rounded-2xl border bg-card shadow-xs overflow-hidden">
-          <div className="flex items-center justify-between border-b px-5 py-4">
-            <div>
-              <h2 className="text-base font-semibold text-foreground">
-                Presensi Karyawan Hari Ini
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {rows.length} karyawan sudah tercatat presensi
-              </p>
-            </div>
-            <Button variant="ghost" size="sm" asChild className="text-xs">
-              <Link to="/rekap">
-                <FileSpreadsheet className="size-3.5 mr-1.5" /> Lihat Semua Rekap
-              </Link>
-            </Button>
-          </div>
-
-          {rows.length === 0 ? (
-            <div className="px-5 py-14 text-center space-y-2">
-              <div className="size-12 rounded-2xl bg-muted/60 text-muted-foreground mx-auto flex items-center justify-center">
-                <Clock className="size-6 opacity-60" />
+        <DataList
+          rows={displayed}
+          rowKey={(r) => r.id}
+          loading={loadingAdmin}
+          loadingLabel="Memuat presensi hari ini..."
+          error={adminGagal ? "Presensi hari ini tidak bisa dimuat dari server." : null}
+          onRetry={() => void refetchAdmin()}
+          header={
+            <>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-foreground">
+                  Presensi Karyawan Hari Ini
+                </h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {rows.length} dari {totalKaryawan} karyawan sudah tercatat
+                </p>
               </div>
-              <p className="font-semibold text-sm text-foreground">Belum Ada Presensi Hari Ini</p>
-              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-                Aktivitas presensi karyawan akan muncul otomatis begitu karyawan memindai QR code di
-                Layar Monitor Kiosk.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b bg-muted/30 text-xs font-semibold uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-5 py-3.5">Nama Karyawan</th>
-                    <th className="px-5 py-3.5">Departemen</th>
-                    <th className="px-5 py-3.5">Jam Masuk</th>
-                    <th className="px-5 py-3.5">Jam Pulang</th>
-                    <th className="px-5 py-3.5 text-right">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {rows.slice(0, 10).map((r) => (
-                    <tr key={r.id} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-5 py-3.5">
-                        <p className="font-semibold text-foreground">{r.employees?.full_name}</p>
-                        <p className="text-xs text-muted-foreground font-mono">
-                          NIK: {r.employees?.nik}
-                        </p>
-                      </td>
-                      <td className="px-5 py-3.5 text-xs text-muted-foreground">
-                        {r.employees?.department} - {r.employees?.position}
-                      </td>
-                      <td className="px-5 py-3.5 font-mono text-xs">
-                        {r.clock_in ? (
-                          <span className="flex items-center gap-1.5 text-emerald-600 font-semibold">
-                            <LogIn className="size-3.5" /> {r.clock_in.slice(0, 5)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 font-mono text-xs">
-                        {r.clock_out ? (
-                          <span className="flex items-center gap-1.5 text-purple-600 font-semibold">
-                            <LogOut className="size-3.5" /> {r.clock_out.slice(0, 5)}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">Belum pulang</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <StatusBadge status={r.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <Button variant="ghost" size="sm" asChild className="shrink-0 text-xs">
+                <Link to="/rekap">
+                  <FileSpreadsheet className="size-3.5" aria-hidden /> Rekap lengkap
+                </Link>
+              </Button>
+            </>
+          }
+          columns={[
+            {
+              header: "Karyawan",
+              render: (r) => (
+                <>
+                  <p className="font-semibold text-foreground">{r.employees?.full_name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">NIK: {r.employees?.nik}</p>
+                </>
+              ),
+            },
+            {
+              header: "Departemen",
+              render: (r) => (
+                <span className="text-xs text-muted-foreground">
+                  {r.employees?.department} · {r.employees?.position}
+                </span>
+              ),
+            },
+            {
+              header: "Jam Masuk",
+              render: (r) =>
+                r.clock_in ? (
+                  <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                    {r.clock_in.slice(0, 5)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">-</span>
+                ),
+            },
+            {
+              header: "Jam Pulang",
+              render: (r) =>
+                r.clock_out ? (
+                  <span className="font-mono text-xs font-semibold text-violet-700 dark:text-violet-400">
+                    {r.clock_out.slice(0, 5)}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Belum pulang</span>
+                ),
+            },
+            { header: "Status", align: "right", render: (r) => <StatusBadge status={r.status} /> },
+          ]}
+          renderCard={(r) => (
+            <div className="space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">{r.employees?.full_name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {r.employees?.department} · {r.employees?.position}
+                  </p>
+                </div>
+                <StatusBadge status={r.status} />
+              </div>
+              <div className="flex items-center gap-4 font-mono text-sm">
+                <span className="text-muted-foreground">
+                  <LogIn
+                    className="mr-1.5 inline size-3.5 text-emerald-700 dark:text-emerald-400"
+                    aria-hidden
+                  />
+                  {r.clock_in ? r.clock_in.slice(0, 5) : "--:--"}
+                </span>
+                <span className="text-muted-foreground">
+                  <LogOut
+                    className="mr-1.5 inline size-3.5 text-violet-700 dark:text-violet-400"
+                    aria-hidden
+                  />
+                  {r.clock_out ? r.clock_out.slice(0, 5) : "--:--"}
+                </span>
+              </div>
             </div>
           )}
-        </section>
+          empty={
+            <div className="flex flex-col items-center gap-2 px-5 py-12 text-center">
+              <div className="flex size-11 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+                <Clock className="size-5" aria-hidden />
+              </div>
+              <p className="text-sm font-semibold text-foreground">Belum ada presensi hari ini</p>
+              <p className="max-w-sm text-xs leading-relaxed text-muted-foreground text-pretty">
+                Catatan muncul otomatis begitu karyawan memindai QR code di Layar Monitor Kiosk.
+              </p>
+            </div>
+          }
+        />
 
-        {/* Modal Input Presensi Manual */}
         <Dialog open={openManual} onOpenChange={setOpenManual}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Input Presensi / Izin Manual</DialogTitle>
+              <DialogTitle className="pr-8">Input Presensi / Izin Manual</DialogTitle>
             </DialogHeader>
             <form onSubmit={simpanManual} className="space-y-4">
               <div className="space-y-1.5">
@@ -491,13 +532,12 @@ function Dashboard() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="note">Keterangan / Alasan (Opsional)</Label>
-                <input
+                <Label htmlFor="note">Keterangan / Alasan (opsional)</Label>
+                <Input
                   id="note"
                   value={manualForm.note}
                   onChange={(e) => setManualForm({ ...manualForm, note: e.target.value })}
-                  placeholder="Contoh: Sakit demam, surat dokter menyusul"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="Contoh: sakit demam, surat dokter menyusul"
                 />
               </div>
 
@@ -520,156 +560,164 @@ function Dashboard() {
   const p = employeeData?.presensiHariIni;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      {/* Header Karyawan */}
-      <header className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Portal Presensi Karyawan
-          </h1>
-          <p className="text-xs sm:text-sm text-muted-foreground flex items-center gap-1.5 mt-0.5">
-            <Calendar className="size-3.5 text-primary" /> {formatTanggal(tanggal)}
-          </p>
-        </div>
+    <div className="mx-auto max-w-4xl space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Portal Presensi Karyawan"
+        subtitle={
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Calendar className="size-3.5 text-primary" aria-hidden />
+            {formatTanggal(tanggal)}
+          </span>
+        }
+        actions={
+          <Button asChild>
+            <Link to="/scan">
+              <ScanLine className="size-4" aria-hidden /> Scan Absen
+            </Link>
+          </Button>
+        }
+      />
 
-        <Button size="lg" asChild className="shadow-xs">
-          <Link to="/scan">
-            <ScanLine className="size-5 mr-2" /> Mulai Scan Absen
-          </Link>
-        </Button>
-      </header>
-
-      {/* Kartu Profil & Estimasi Gaji Karyawan */}
-      <div className="rounded-3xl border bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6 shadow-md space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="size-12 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center font-bold">
-              <User className="size-6 text-white" />
+      {/* Kartu profil: satu-satunya bidang bergradasi di halaman ini, dipakai sebagai
+          focal point karena berisi angka yang paling ingin dilihat karyawan. */}
+      <div className="space-y-5 rounded-3xl bg-gradient-to-br from-emerald-700 to-teal-800 p-5 text-white shadow-[var(--shadow-lift)] sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-white/15">
+              <User className="size-6" aria-hidden />
             </div>
-            <div>
-              <h2 className="text-lg font-bold">{currentEmployee?.full_name || "Karyawan"}</h2>
-              <p className="text-xs text-emerald-100">
-                NIK: <span className="font-mono">{currentEmployee?.nik}</span> ·{" "}
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-bold">
+                {currentEmployee?.full_name || "Karyawan"}
+              </h2>
+              <p className="mt-0.5 text-xs leading-relaxed text-emerald-50/90">
+                NIK <span className="font-mono">{currentEmployee?.nik}</span> ·{" "}
                 {currentEmployee?.department} ({currentEmployee?.position})
               </p>
             </div>
           </div>
 
-          <div className="text-right">
-            <span className="text-xs text-emerald-200 block">Tarif Harian</span>
-            <span className="font-mono font-bold text-lg">
+          <div className="shrink-0 sm:text-right">
+            <span className="block text-xs text-emerald-50/90">Tarif harian</span>
+            <span className="font-mono text-lg font-bold">
               {formatRupiah(Number(currentEmployee?.daily_salary) || 0)}
-              <span className="text-xs font-normal"> / hari</span>
+              <span className="text-xs font-normal text-emerald-50/90"> / hari</span>
             </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 pt-4 border-t border-white/20">
+        <div className="grid grid-cols-1 gap-4 border-t border-white/20 pt-4 sm:grid-cols-2">
           <div>
-            <p className="text-xs text-emerald-200">Kehadiran Bulan Ini</p>
-            <p className="text-3xl font-extrabold font-mono mt-1">
-              {employeeData?.totalHadirBulanIni ?? 0}{" "}
-              <span className="text-sm font-normal text-emerald-200">hari</span>
+            <p className="text-xs text-emerald-50/90">Kehadiran bulan ini</p>
+            <p className="mt-1 font-mono text-2xl font-extrabold sm:text-3xl">
+              {loadingEmp ? "–" : (employeeData?.totalHadirBulanIni ?? 0)}{" "}
+              <span className="font-sans text-sm font-normal text-emerald-50/90">hari</span>
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-emerald-200">Estimasi Gaji Terkumpul</p>
-            <p className="text-3xl font-extrabold font-mono mt-1 text-white">
-              {formatRupiah(employeeData?.estimasiGaji ?? 0)}
+          <div>
+            <p className="text-xs text-emerald-50/90">Estimasi gaji terkumpul</p>
+            <p className="mt-1 break-words font-mono text-2xl font-extrabold sm:text-3xl">
+              {loadingEmp ? "–" : formatRupiah(employeeData?.estimasiGaji ?? 0)}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Kartu Status Hari Ini */}
-      <div className="rounded-2xl border bg-card p-5 shadow-xs space-y-4">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          <Clock className="size-4 text-primary" /> Status Absensi Anda Hari Ini
+      <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)] sm:p-5">
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <Clock className="size-4 text-primary" aria-hidden /> Absensi Anda Hari Ini
         </h3>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 rounded-xl bg-muted/40 border space-y-1">
-            <span className="text-xs text-emerald-600 font-medium flex items-center gap-1.5">
-              <LogIn className="size-4" /> Jam Masuk (Clock In)
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="space-y-1 rounded-xl border bg-muted/40 p-3">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+              <LogIn className="size-4" aria-hidden /> Jam masuk
             </span>
-            <p className="text-2xl font-mono font-bold text-foreground">
-              {p?.clock_in ? p.clock_in.slice(0, 5) : "-"}
+            <p className="font-mono text-xl font-bold leading-tight text-foreground">
+              {p?.clock_in ? p.clock_in.slice(0, 5) : "--:--"}
             </p>
-            {p?.status && <StatusBadge status={p.status} />}
+            {p?.status ? <StatusBadge status={p.status} /> : null}
           </div>
 
-          <div className="p-4 rounded-xl bg-muted/40 border space-y-1">
-            <span className="text-xs text-purple-600 font-medium flex items-center gap-1.5">
-              <LogOut className="size-4" /> Jam Pulang (Clock Out)
+          <div className="space-y-1 rounded-xl border bg-muted/40 p-3">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-violet-700 dark:text-violet-400">
+              <LogOut className="size-4" aria-hidden /> Jam pulang
             </span>
-            <p className="text-2xl font-mono font-bold text-foreground">
-              {p?.clock_out ? p.clock_out.slice(0, 5) : "Belum Absen"}
+            <p className="font-mono text-xl font-bold leading-tight text-foreground">
+              {p?.clock_out ? p.clock_out.slice(0, 5) : "--:--"}
             </p>
-            <span className="text-[11px] text-muted-foreground block">
-              {p?.clock_out ? "Presensi hari ini selesai" : "Scan di monitor sebelum pulang"}
+            <span className="block text-[11px] leading-snug text-muted-foreground">
+              {p?.clock_out ? "Presensi hari ini selesai" : "Scan monitor sebelum pulang"}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Riwayat Kehadiran Karyawan Bulan Ini */}
-      <div className="rounded-2xl border bg-card shadow-xs overflow-hidden">
-        <div className="p-4 border-b">
-          <h3 className="text-sm font-semibold">Riwayat Kehadiran Anda Bulan Ini</h3>
-        </div>
-
-        {employeeData?.riwayatBulanIni.length === 0 ? (
-          <p className="p-8 text-center text-sm text-muted-foreground">
-            Belum ada catatan presensi di bulan ini.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b bg-muted/40 text-xs font-semibold uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-5 py-3">Tanggal</th>
-                  <th className="px-5 py-3">Jam Masuk</th>
-                  <th className="px-5 py-3">Jam Pulang</th>
-                  <th className="px-5 py-3 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {employeeData?.riwayatBulanIni.slice(0, 10).map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-5 py-3 text-xs font-medium">
-                      {formatTanggal(r.attend_date)}
-                    </td>
-                    <td className="px-5 py-3 font-mono text-xs">
-                      {r.clock_in ? r.clock_in.slice(0, 5) : "-"}
-                    </td>
-                    <td className="px-5 py-3 font-mono text-xs">
-                      {r.clock_out ? r.clock_out.slice(0, 5) : "-"}
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <StatusBadge status={r.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <DataList
+        rows={employeeData?.riwayatBulanIni.slice(0, 10) ?? []}
+        rowKey={(r) => r.id}
+        loading={loadingEmp}
+        loadingLabel="Memuat riwayat kehadiran..."
+        error={empGagal ? "Riwayat kehadiran tidak bisa dimuat dari server." : null}
+        onRetry={() => void refetchEmp()}
+        header={<h3 className="text-sm font-semibold">Riwayat Kehadiran Bulan Ini</h3>}
+        columns={[
+          {
+            header: "Tanggal",
+            render: (r) => (
+              <span className="text-xs font-medium">{formatTanggal(r.attend_date)}</span>
+            ),
+          },
+          {
+            header: "Masuk",
+            render: (r) => (
+              <span className="font-mono text-xs">{r.clock_in ? r.clock_in.slice(0, 5) : "-"}</span>
+            ),
+          },
+          {
+            header: "Pulang",
+            render: (r) => (
+              <span className="font-mono text-xs">
+                {r.clock_out ? r.clock_out.slice(0, 5) : "-"}
+              </span>
+            ),
+          },
+          { header: "Status", align: "right", render: (r) => <StatusBadge status={r.status} /> },
+        ]}
+        renderCard={(r) => (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">{formatTanggal(r.attend_date)}</p>
+              <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+                {r.clock_in ? r.clock_in.slice(0, 5) : "--:--"} ·{" "}
+                {r.clock_out ? r.clock_out.slice(0, 5) : "--:--"}
+              </p>
+            </div>
+            <StatusBadge status={r.status} />
           </div>
         )}
-      </div>
+        empty={
+          <p className="px-5 py-10 text-center text-sm text-muted-foreground">
+            Belum ada catatan presensi di bulan ini.
+          </p>
+        }
+      />
     </div>
   );
 }
 
 export function StatusBadge({ status }: { status: string }) {
+  // Lencana status: bentuk pil dipakai karena memang penanda keadaan, bukan hiasan.
   const map: Record<string, string> = {
-    hadir: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
-    terlambat: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
-    sakit: "bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300",
-    izin: "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
-    alfa: "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300",
+    hadir: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300",
+    terlambat: "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
+    sakit: "bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300",
+    izin: "bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300",
+    alfa: "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300",
   };
   return (
     <span
-      className={`rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
+      className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${
         map[status] ?? "bg-muted text-muted-foreground"
       }`}
     >

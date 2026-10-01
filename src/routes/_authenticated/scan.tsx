@@ -34,7 +34,7 @@ import { useAuthProfile } from "@/hooks/use-auth-profile";
 export const Route = createFileRoute("/_authenticated/scan")({
   head: () => ({
     meta: [
-      { title: "Scan Presensi — AbsenGo" },
+      { title: "Scan Presensi · AbsenGo" },
       {
         name: "description",
         content: "Arahkan kamera HP ke layar kantor untuk absen masuk atau pulang.",
@@ -75,7 +75,7 @@ function playBeep(success: boolean) {
       osc.stop(ctx.currentTime + 0.35);
     }
   } catch {
-    // Browser tidak mendukung Web Audio — beep dilewati saja
+    // Browser tidak mendukung Web Audio, beep dilewati saja
   }
 }
 
@@ -270,7 +270,7 @@ function ScanPage() {
         await scannerRef.current.stop();
         scannerRef.current.clear();
       } catch {
-        // Kamera sudah berhenti / tidak aktif — aman diabaikan
+        // Kamera sudah berhenti atau tidak aktif, aman diabaikan
       }
       scannerRef.current = null;
     }
@@ -296,12 +296,12 @@ function ScanPage() {
   if (isAdmin) {
     return (
       <div className="mx-auto max-w-lg py-10 space-y-6 text-center">
-        <div className="size-16 rounded-3xl bg-purple-500/10 text-purple-600 mx-auto flex items-center justify-center">
-          <ShieldAlert className="size-8" />
+        <div className="flex size-14 items-center justify-center rounded-3xl bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300">
+          <ShieldAlert className="size-7" aria-hidden />
         </div>
 
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">Halaman Khusus Karyawan</h1>
+          <h1 className="text-xl font-bold sm:text-2xl">Halaman Khusus Karyawan</h1>
           <p className="text-sm text-muted-foreground leading-relaxed">
             Akun Anda terdaftar sebagai{" "}
             <span className="font-semibold text-foreground">Admin / HRD</span>. Fitur Scan Kamera
@@ -320,7 +320,7 @@ function ScanPage() {
           </ul>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-center gap-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
           <Button asChild variant="outline">
             <Link to="/dashboard">
               <ArrowLeft className="size-4 mr-1.5" /> Ke Dashboard Admin
@@ -338,11 +338,11 @@ function ScanPage() {
 
   // TAMPILAN SCAN UNTUK KARYAWAN:
   return (
-    <div className="mx-auto max-w-xl space-y-6">
-      <header className="text-center space-y-1.5">
-        <h1 className="text-2xl font-bold tracking-tight">Scan Presensi Kantor</h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          Arahkan kamera HP ke{" "}
+    <div className="mx-auto max-w-xl space-y-5 sm:space-y-6">
+      <header className="space-y-1.5 text-center">
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Scan Presensi Kantor</h1>
+        <p className="text-sm leading-relaxed text-muted-foreground text-pretty">
+          Arahkan kamera ke{" "}
           <span className="font-semibold text-foreground">Layar Monitor Kantor</span> untuk absen
           masuk atau pulang.
         </p>
@@ -350,42 +350,40 @@ function ScanPage() {
 
       {/* Info Karyawan yang Sedang Login */}
       {currentEmployee && (
-        <div className="p-3.5 rounded-2xl border bg-card shadow-[var(--shadow-soft)] flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-              <User className="size-5" />
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-3.5 shadow-[var(--shadow-soft)]">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 font-bold text-primary">
+              <User className="size-5" aria-hidden />
             </div>
-            <div>
-              <p className="text-sm font-semibold">{currentEmployee.full_name}</p>
-              <p className="text-xs text-muted-foreground">
-                NIK: <span className="font-mono">{currentEmployee.nik}</span> ·{" "}
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{currentEmployee.full_name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                NIK <span className="font-mono">{currentEmployee.nik}</span> ·{" "}
                 {currentEmployee.department}
               </p>
             </div>
           </div>
 
-          <div className="text-right">
-            {presensiSaya ? (
-              <span
-                className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                  presensiSaya.clock_out
-                    ? "bg-purple-100 text-purple-700"
-                    : "bg-emerald-100 text-emerald-700"
-                }`}
-              >
-                {presensiSaya.clock_out ? "Sudah Pulang" : "Sudah Masuk"}
-              </span>
-            ) : (
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                Belum Masuk
-              </span>
-            )}
-          </div>
+          <span
+            className={`inline-block shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+              presensiSaya
+                ? presensiSaya.clock_out
+                  ? "bg-violet-100 text-violet-800"
+                  : "bg-emerald-100 text-emerald-800"
+                : "bg-amber-100 text-amber-800"
+            }`}
+          >
+            {presensiSaya
+              ? presensiSaya.clock_out
+                ? "Sudah Pulang"
+                : "Sudah Masuk"
+              : "Belum Masuk"}
+          </span>
         </div>
       )}
 
       {/* Area Scanner Kamera */}
-      <div className="relative overflow-hidden rounded-3xl border bg-slate-950 p-4 text-center shadow-lg">
+      <div className="relative overflow-hidden rounded-3xl border bg-slate-950 p-4 text-center shadow-[var(--shadow-lift)]">
         {/* Hasil scan: muncul sebentar lalu menutup sendiri (3 detik) */}
         {flash && (
           <div
@@ -473,15 +471,15 @@ function ScanPage() {
           </h3>
 
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded-xl bg-muted/40 border">
-              <div className="flex items-center gap-2 text-xs font-medium text-emerald-600">
-                <LogIn className="size-4" /> Jam Masuk (Clock In)
-              </div>
-              <p className="mt-1 font-mono text-xl font-bold">
-                {presensiSaya.clock_in ? presensiSaya.clock_in.slice(0, 5) : "-"}
+            <div className="space-y-1 rounded-xl border bg-muted/40 p-3">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                <LogIn className="size-4" aria-hidden /> Jam masuk
+              </span>
+              <p className="font-mono text-xl font-bold leading-tight">
+                {presensiSaya.clock_in ? presensiSaya.clock_in.slice(0, 5) : "--:--"}
               </p>
               <span
-                className={`inline-block mt-1 text-[10px] font-bold uppercase px-2 py-0.2 rounded ${
+                className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase ${
                   presensiSaya.status === "terlambat"
                     ? "bg-amber-100 text-amber-800"
                     : "bg-emerald-100 text-emerald-800"
@@ -491,17 +489,17 @@ function ScanPage() {
               </span>
             </div>
 
-            <div className="p-3 rounded-xl bg-muted/40 border">
-              <div className="flex items-center gap-2 text-xs font-medium text-purple-600">
-                <LogOut className="size-4" /> Jam Pulang (Clock Out)
-              </div>
-              <p className="mt-1 font-mono text-xl font-bold">
-                {presensiSaya.clock_out ? presensiSaya.clock_out.slice(0, 5) : "Belum Absen"}
+            <div className="space-y-1 rounded-xl border bg-muted/40 p-3">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-violet-700 dark:text-violet-400">
+                <LogOut className="size-4" aria-hidden /> Jam pulang
+              </span>
+              <p className="font-mono text-xl font-bold leading-tight">
+                {presensiSaya.clock_out ? presensiSaya.clock_out.slice(0, 5) : "--:--"}
               </p>
-              <span className="inline-block mt-1 text-[10px] text-muted-foreground">
+              <span className="block text-[11px] leading-snug text-muted-foreground">
                 {presensiSaya.clock_out
-                  ? "Selesai Kerja"
-                  : `Jadwal Pulang: ${settings?.work_end_time?.slice(0, 5) || "17:00"}`}
+                  ? "Selesai kerja"
+                  : `Jadwal pulang ${settings?.work_end_time?.slice(0, 5) || "17:00"}`}
               </span>
             </div>
           </div>

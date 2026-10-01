@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 export const Route = createFileRoute("/auth")({
   head: () => ({
     meta: [
-      { title: "Masuk — AbsenGo Corporate" },
+      { title: "Masuk · AbsenGo Corporate" },
       { name: "description", content: "Masuk ke sistem presensi karyawan." },
     ],
   }),
@@ -86,23 +86,27 @@ function AuthPage() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center bg-mesh px-5 py-10">
-      <div className="w-full max-w-md">
+    <div className="grid min-h-dvh place-items-center bg-mesh px-5 py-8 sm:py-12">
+      <div className="w-full max-w-sm sm:max-w-md">
         <div className="mb-6 text-center">
           <Link to="/" className="inline-block">
-            <img src="/logo.webp" alt="Logo" className="h-16 w-auto mx-auto object-contain" />
+            <img
+              src="/logo.webp"
+              alt="Logo AbsenGo"
+              className="mx-auto h-14 w-auto object-contain"
+            />
           </Link>
-          <h1 className="mt-3 text-xl font-bold text-foreground">AbsenGo Corporate</h1>
-          <p className="text-xs text-muted-foreground">
-            Sistem Presensi Karyawan & Penggajian Harian
+          <h1 className="mt-3 text-lg font-bold text-foreground sm:text-xl">AbsenGo Corporate</h1>
+          <p className="mt-1 text-xs text-muted-foreground text-pretty">
+            Presensi karyawan dan penggajian harian
           </p>
         </div>
 
-        <div className="rounded-2xl border bg-card p-6 shadow-[var(--shadow-lift)]">
+        <div className="rounded-2xl border bg-card p-5 shadow-[var(--shadow-lift)] sm:p-7">
           <form onSubmit={masuk} className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="username" className="flex items-center gap-1.5">
-                <UserRound className="size-4" /> Username
+                <UserRound className="size-4" aria-hidden /> Username
               </Label>
               <Input
                 id="username"
@@ -114,13 +118,12 @@ function AuthPage() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="username"
-                className="h-11"
               />
             </div>
 
             <div className="space-y-1.5">
               <Label htmlFor="pass" className="flex items-center gap-1.5">
-                <Lock className="size-4" /> Kata Sandi
+                <Lock className="size-4" aria-hidden /> Kata Sandi
               </Label>
               <Input
                 id="pass"
@@ -130,20 +133,19 @@ function AuthPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="h-11"
+                placeholder="Kata sandi"
               />
             </div>
 
-            <Button type="submit" className="w-full h-11" disabled={loading}>
+            <Button type="submit" className="w-full md:h-11" disabled={loading}>
               {loading ? "Memproses..." : "Masuk"}
             </Button>
           </form>
         </div>
 
-        <div className="mt-6 text-center text-xs text-muted-foreground">
-          <p>Belum punya akun? Hubungi administrator kantor.</p>
-        </div>
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          Belum punya akun? Hubungi administrator kantor.
+        </p>
       </div>
     </div>
   );

@@ -30,7 +30,7 @@ export const Route = createFileRoute("/kiosk")({
   },
   head: () => ({
     meta: [
-      { title: "Layar Presensi Kantor — AbsenGo" },
+      { title: "Layar Presensi Kantor · AbsenGo" },
       { name: "description", content: "Layar monitor display QR presensi dinamis kantor." },
     ],
   }),
@@ -134,18 +134,18 @@ function KioskPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between p-6 sm:p-10 select-none">
+    <div className="flex min-h-dvh select-none flex-col justify-between bg-slate-950 p-6 text-white sm:p-10">
       {/* Header Kiosk */}
-      <header className="flex items-center justify-between border-b border-slate-800 pb-5">
-        <div className="flex items-center gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-5">
+        <div className="flex min-w-0 items-center gap-4">
           <Link to="/dashboard">
             <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
               <ArrowLeft className="size-4 mr-2" /> Kembali ke Dashboard
             </Button>
           </Link>
           <div className="h-6 w-[1px] bg-slate-800 hidden sm:block" />
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+          <div className="min-w-0">
+            <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-white sm:text-2xl">
               {settings?.company_name || "Perusahaan"}
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 Layar Presensi Kantor
@@ -300,7 +300,7 @@ function KioskPage() {
 
       {/* Footer Kiosk */}
       <footer className="border-t border-slate-900 pt-4 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
-        <span>Sistem Presensi Kiosk — Dynamic QR Anti-Fraud</span>
+        <span>Sistem Presensi Kiosk · Dynamic QR Anti-Fraud</span>
         <div className="flex items-center gap-2">
           <span>Powered by</span>
           <span className="text-slate-300 font-semibold">AbsenGo Perusahaan</span>

@@ -10,38 +10,122 @@ import {
   Settings,
   LogOut,
   Menu,
-  X,
   Tv,
   UserX,
   ShieldAlert,
+  ExternalLink,
+  type LucideIcon,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuthProfile } from "@/hooks/use-auth-profile";
 
+interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  /** Menu yang dibuka di tab terpisah (layar monitor di ruang tunggu). */
+  newTab?: boolean;
+}
+
+// NavLinks dan UserCard berada di luar AppShell supaya identitas komponennya
+// tetap. Kalau didefinisikan di dalam body, tiap render membuat fungsi baru
+// dan React akan melepas-sambung ulang seluruh isi laci menu.
+function NavLinks({
+  items,
+  pathname,
+  onPilih,
+}: {
+  items: NavItem[];
+  pathname: string;
+  onPilih?: () => void;
+}) {
+  return (
+    <nav className="flex flex-col gap-1" aria-label="Menu utama">
+      {items.map((item) => {
+        const active = pathname === item.to;
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            {...(item.newTab ? { target: "_blank" as const } : {})}
+            onClick={onPilih}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+              active
+                ? "bg-primary font-semibold text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+            )}
+          >
+            <item.icon className="size-4 shrink-0" aria-hidden />
+            <span className="min-w-0 flex-1">{item.label}</span>
+            {item.newTab ? (
+              <ExternalLink className="size-3.5 shrink-0 opacity-70" aria-hidden />
+            ) : null}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function UserCard({
+  nama,
+  email,
+  onKeluar,
+}: {
+  nama: string;
+  email: string;
+  onKeluar?: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border bg-muted/40 p-2.5">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">
+        {nama.charAt(0).toUpperCase()}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-semibold leading-tight text-foreground">{nama}</p>
+        <p className="mt-0.5 truncate text-[11px] leading-tight text-muted-foreground">{email}</p>
+      </div>
+      {onKeluar ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onKeluar}
+          title="Keluar"
+          aria-label="Keluar dari akun"
+          className="shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        >
+          <LogOut className="size-4" aria-hidden />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const [open, setOpen] = useState(false);
+  const [menuTerbuka, setMenuTerbuka] = useState(false);
 
   const { data: authProfile, isLoading: loadingProfile } = useAuthProfile();
   const isAdmin = authProfile?.isAdmin ?? false;
   const belumTerdaftar = !loadingProfile && !!authProfile?.user && !authProfile.isRegistered;
 
-  // Navigasi Admin: Seluruh item menyatu rapi dalam satu daftar tanpa elemen terpisah
-  const adminNav = [
+  const adminNav: NavItem[] = [
     { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/kiosk", label: "Layar Kiosk Kantor", icon: Tv },
     { to: "/karyawan", label: "Data Karyawan", icon: Users },
-    { to: "/gaji", label: "Penggajian (Payroll)", icon: DollarSign },
+    { to: "/gaji", label: "Penggajian", icon: DollarSign },
     { to: "/rekap", label: "Rekap Kehadiran", icon: BarChart3 },
     { to: "/pengaturan", label: "Pengaturan Kantor", icon: Settings },
+    { to: "/kiosk", label: "Layar Kiosk", icon: Tv, newTab: true },
   ];
 
-  // Navigasi Karyawan
-  const employeeNav = [
+  const employeeNav: NavItem[] = [
     { to: "/dashboard", label: "Dashboard Saya", icon: LayoutDashboard },
     { to: "/scan", label: "Scan Presensi", icon: ScanLine },
     { to: "/rekap", label: "Riwayat Presensi", icon: BarChart3 },
@@ -49,8 +133,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const navItems = belumTerdaftar ? [] : isAdmin ? adminNav : employeeNav;
 
-  // Halaman khusus admin — RLS sudah menolak data, ini hanya tampilan.
-  // "/rekap" tidak dimasukkan karena karyawan memakai halaman ini untuk riwayat pribadi.
+  // Halaman khusus admin. RLS sudah menolak data, ini hanya tampilan.
+  // "/rekap" tidak masuk daftar karena karyawan memakai halaman ini untuk riwayat pribadi.
   const adminOnlyPaths = ["/karyawan", "/gaji", "/pengaturan"];
   const ditolakAdmin = belumTerdaftar || (!isAdmin && adminOnlyPaths.includes(pathname));
 
@@ -65,126 +149,100 @@ export function AppShell({ children }: { children: ReactNode }) {
     authProfile?.employee?.full_name ||
     authProfile?.user?.user_metadata?.["full_name"] ||
     authProfile?.user?.email?.split("@")[0] ||
-    "User";
+    "Pengguna";
 
   const userEmail = authProfile?.user?.email || "";
-  const initialLetter = userDisplayName.charAt(0).toUpperCase();
 
   return (
-    <div className="min-h-screen bg-background md:flex">
-      {/* Sidebar Navigasi */}
-      <aside
-        className={cn(
-          "z-40 flex w-full shrink-0 flex-col border-b bg-card/95 backdrop-blur-md px-4 py-4 md:h-screen md:w-64 md:border-r md:border-b-0 md:py-6",
-          "md:sticky md:top-0 shadow-xs",
-        )}
-      >
-        {/* Brand Logo */}
-        <div className="flex items-center justify-between pb-2">
-          <Link to="/dashboard" className="flex items-center">
-            <img src="/logo.webp" alt="AbsenGo" className="h-11 w-auto object-contain" />
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setOpen((v) => !v)}
-            aria-label="Menu"
-          >
-            {open ? <X className="size-5" /> : <Menu className="size-5" />}
-          </Button>
-        </div>
+    <div className="min-h-dvh bg-background md:flex">
+      {/* Sidebar: hanya layar lebar (>= 768px) */}
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r bg-sidebar px-4 py-6 md:flex">
+        <Link to="/dashboard" className="flex items-center px-2">
+          <img src="/logo.webp" alt="AbsenGo" className="h-10 w-auto object-contain" />
+        </Link>
 
-        {/* Unified Navigation List (Semua menu tampil sejajar dan rapi) */}
-        <div className="mt-6 flex-1 flex flex-col">
-          <div className="px-2 mb-2 text-[10px] font-semibold tracking-wider text-muted-foreground/80 uppercase">
+        <div className="mt-7 flex-1 overflow-y-auto">
+          <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             {isAdmin ? "Menu Utama" : "Portal Karyawan"}
-          </div>
-
-          <nav className={cn("flex flex-col gap-1", open ? "flex" : "hidden md:flex")}>
-            {navItems.map((item) => {
-              const active = pathname === item.to;
-              const isKiosk = item.to === "/kiosk";
-
-              return (
-                <Link
-                  key={item.to}
-                  to={item.to}
-                  {...(isKiosk ? { target: "_blank" as const } : {})}
-                  onClick={() => setOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150",
-                    active
-                      ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                      : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                  )}
-                >
-                  <item.icon
-                    className={cn(
-                      "size-4",
-                      active ? "text-primary-foreground" : "text-muted-foreground",
-                    )}
-                  />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+          </p>
+          <NavLinks items={navItems} pathname={pathname} />
         </div>
 
-        {/* User Card di Bagian Bawah Sidebar */}
-        <div className={cn("mt-auto pt-4 border-t", open ? "block" : "hidden md:block")}>
-          <div className="flex items-center justify-between p-2 rounded-xl bg-muted/40 border">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="size-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0">
-                {initialLetter}
-              </div>
-              <div className="min-w-0 pr-1">
-                <p className="text-xs font-semibold text-foreground truncate leading-tight">
-                  {userDisplayName}
-                </p>
-                <p className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
-                  {userEmail}
-                </p>
-              </div>
-            </div>
-
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={keluar}
-              title="Keluar"
-              className="size-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
-            >
-              <LogOut className="size-4" />
-            </Button>
-          </div>
+        <div className="mt-4 border-t pt-4">
+          <UserCard nama={userDisplayName} email={userEmail} onKeluar={keluar} />
         </div>
       </aside>
 
-      {/* Main Page Content */}
-      <main className="min-w-0 flex-1 px-5 py-6 flex flex-col md:px-8 md:py-8">
+      {/* Bilah atas + laci menu: hanya layar sempit */}
+      <div className="md:hidden">
+        <header className="sticky top-0 z-40 flex h-14 items-center justify-between gap-3 border-b bg-card/95 px-4 backdrop-blur-md">
+          <Link to="/dashboard" className="flex min-w-0 items-center gap-2">
+            <img src="/logo.webp" alt="AbsenGo" className="h-8 w-auto shrink-0 object-contain" />
+            <span className="truncate text-sm font-bold">AbsenGo</span>
+          </Link>
+
+          <Sheet open={menuTerbuka} onOpenChange={setMenuTerbuka}>
+            <SheetTrigger asChild>
+              <Button variant="outline" className="shrink-0 px-3">
+                <Menu className="size-5" aria-hidden /> Menu
+              </Button>
+            </SheetTrigger>
+            <SheetContent
+              side="left"
+              className="flex w-[85%] max-w-xs flex-col gap-0 border-r bg-sidebar p-4"
+            >
+              <SheetTitle className="sr-only">Menu navigasi AbsenGo</SheetTitle>
+
+              <div className="flex items-center gap-2 px-1 pb-5 pr-12">
+                <img src="/logo.webp" alt="" className="h-9 w-auto object-contain" />
+                <span className="truncate text-sm font-bold">AbsenGo</span>
+              </div>
+
+              <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {isAdmin ? "Menu Utama" : "Portal Karyawan"}
+              </p>
+              <div className="flex-1 overflow-y-auto">
+                <NavLinks
+                  items={navItems}
+                  pathname={pathname}
+                  onPilih={() => setMenuTerbuka(false)}
+                />
+              </div>
+
+              <div className="mt-4 space-y-3 border-t pt-4">
+                <UserCard nama={userDisplayName} email={userEmail} />
+                <Button variant="outline" className="w-full" onClick={keluar}>
+                  <LogOut className="size-4" aria-hidden /> Keluar dari akun
+                </Button>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </header>
+      </div>
+
+      {/* Konten halaman */}
+      <main className="flex min-w-0 flex-1 flex-col px-4 py-5 sm:px-6 md:px-8 md:py-8">
         <div className="flex-1">
           {belumTerdaftar ? (
-            <div className="mx-auto max-w-lg rounded-2xl border bg-card p-8 text-center shadow-[var(--shadow-soft)]">
-              <UserX className="mx-auto size-10 text-muted-foreground" />
+            <div className="mx-auto max-w-lg rounded-2xl border bg-card p-6 text-center shadow-[var(--shadow-soft)] sm:p-8">
+              <UserX className="mx-auto size-10 text-muted-foreground" aria-hidden />
               <h1 className="mt-4 text-lg font-semibold">Akun belum terdaftar sebagai karyawan</h1>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                 Login berhasil, tetapi email{" "}
-                <span className="font-medium text-foreground">{userEmail}</span> belum terdaftar di
-                data karyawan. Hubungi administrator kantor untuk mendaftarkan akun ini beserta hak
-                aksesnya.
+                <span className="font-medium break-all text-foreground">{userEmail}</span> belum
+                terdaftar di data karyawan. Hubungi administrator kantor untuk mendaftarkan akun ini
+                beserta hak aksesnya.
               </p>
               <Button variant="outline" className="mt-6" onClick={keluar}>
-                <LogOut className="size-4" /> Keluar
+                <LogOut className="size-4" aria-hidden /> Keluar
               </Button>
             </div>
           ) : ditolakAdmin ? (
-            <div className="mx-auto max-w-lg rounded-2xl border bg-card p-8 text-center shadow-[var(--shadow-soft)]">
-              <ShieldAlert className="mx-auto size-10 text-muted-foreground" />
+            <div className="mx-auto max-w-lg rounded-2xl border bg-card p-6 text-center shadow-[var(--shadow-soft)] sm:p-8">
+              <ShieldAlert className="mx-auto size-10 text-muted-foreground" aria-hidden />
               <h1 className="mt-4 text-lg font-semibold">Halaman khusus administrator</h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Akun ini tidak memiliki hak akses admin. Data workforce dan penggajian hanya bisa
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                Akun ini tidak memiliki hak akses admin. Data karyawan dan penggajian hanya bisa
                 dibuka oleh administrator.
               </p>
               <Button variant="outline" className="mt-6" asChild>
@@ -196,10 +254,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </div>
 
-        <footer className="mt-auto border-t pt-8 mt-12 pb-2 flex flex-col items-center justify-center gap-2 text-sm text-muted-foreground print:hidden">
-          <div className="flex items-center gap-2 text-xs">
-            <span>AbsenGo Corporate · Sistem Presensi & Penggajian Harian</span>
-          </div>
+        <footer className="mt-10 border-t pt-4 text-xs text-muted-foreground print:hidden">
+          AbsenGo Corporate · Sistem presensi dan penggajian harian
         </footer>
       </main>
     </div>

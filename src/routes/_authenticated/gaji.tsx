@@ -1,21 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { DollarSign, Download, Printer, Calendar, FileText, CheckCircle2 } from "lucide-react";
+import { DollarSign, Download, Printer, Calendar, FileText, UserX } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { DataList } from "@/components/data-list";
+import { PageHeader } from "@/components/page-header";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
   formatRupiah,
   formatTanggal,
-  todayJakarta,
   toCsv,
   downloadCsv,
   type Employee,
@@ -26,7 +28,7 @@ import {
 export const Route = createFileRoute("/_authenticated/gaji")({
   head: () => ({
     meta: [
-      { title: "Penggajian — AbsenGo" },
+      { title: "Penggajian · AbsenGo" },
       { name: "description", content: "Kalkulasi dan rekapitulasi gaji harian karyawan." },
     ],
   }),
@@ -40,17 +42,10 @@ function getBiweeklyPeriod(): { dari: string; sampai: string } {
   const day = now.getDate();
 
   if (day <= 15) {
-    return {
-      dari: `${year}-${month}-01`,
-      sampai: `${year}-${month}-15`,
-    };
-  } else {
-    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
-    return {
-      dari: `${year}-${month}-16`,
-      sampai: `${year}-${month}-${lastDay}`,
-    };
+    return { dari: `${year}-${month}-01`, sampai: `${year}-${month}-15` };
   }
+  const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+  return { dari: `${year}-${month}-16`, sampai: `${year}-${month}-${lastDay}` };
 }
 
 function getMonthlyPeriod(): { dari: string; sampai: string } {
@@ -58,10 +53,7 @@ function getMonthlyPeriod(): { dari: string; sampai: string } {
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
-  return {
-    dari: `${year}-${month}-01`,
-    sampai: `${year}-${month}-${lastDay}`,
-  };
+  return { dari: `${year}-${month}-01`, sampai: `${year}-${month}-${lastDay}` };
 }
 
 interface RekapGajiRow {
@@ -81,18 +73,26 @@ function GajiPage() {
   const [sampai, setSampai] = useState(defaultPeriod.sampai);
   const [slipModal, setSlipModal] = useState<RekapGajiRow | null>(null);
 
-  // Ambil pengaturan kantor
   const { data: settings } = useQuery<CompanySettings | null>({
     queryKey: ["company_settings"],
     queryFn: async () => {
-      const { data } = await supabase.from("company_settings").select("*").eq("id", 1).maybeSingle();
+      const { data } = await supabase
+        .from("company_settings")
+        .select("*")
+        .eq("id", 1)
+        .maybeSingle();
       return (data as unknown as CompanySettings) || null;
     },
   });
 
-  // Ambil daftar karyawan
-  const { data: employees = [], isLoading: loadEmp } = useQuery<Employee[]>({
+  const {
+    data: employees = [],
+    isLoading: loadEmp,
+    isError: empGagal,
+    refetch: refetchEmp,
+  } = useQuery<Employee[]>({
     queryKey: ["employees"],
+    retry: 1,
     queryFn: async () => {
       const { data } = await supabase
         .from("employees")
@@ -104,9 +104,14 @@ function GajiPage() {
     },
   });
 
-  // Ambil presensi pada rentang tanggal
-  const { data: attendances = [], isLoading: loadAtt } = useQuery<CompanyAttendance[]>({
+  const {
+    data: attendances = [],
+    isLoading: loadAtt,
+    isError: attGagal,
+    refetch: refetchAtt,
+  } = useQuery<CompanyAttendance[]>({
     queryKey: ["payroll_attendance", dari, sampai],
+    retry: 1,
     queryFn: async () => {
       const { data } = await supabase
         .from("company_attendance")
@@ -117,9 +122,7 @@ function GajiPage() {
     },
   });
 
-  // Hitung akumulasi gaji harian per karyawan
   const payrollData: RekapGajiRow[] = useMemo(() => {
-    // Kelompokkan presensi per employee_id
     const attMap = new Map<string, CompanyAttendance[]>();
     for (const att of attendances) {
       const list = attMap.get(att.employee_id) || [];
@@ -135,10 +138,9 @@ function GajiPage() {
       const sakit = list.filter((a) => a.status === "sakit").length;
       const alfa = list.filter((a) => a.status === "alfa").length;
 
-      // Kehadiran kerja = hadir tepat waktu + hadir terlambat
+      // Kehadiran kerja dihitung hanya dari hadir tepat waktu dan terlambat.
       const totalHadir = tepatWaktu + terlambat;
       const dailySalary = Number(emp.daily_salary) || 0;
-      const totalGaji = totalHadir * dailySalary;
 
       return {
         employee: emp,
@@ -148,24 +150,19 @@ function GajiPage() {
         izin,
         sakit,
         alfa,
-        totalGaji,
+        totalGaji: totalHadir * dailySalary,
       };
     });
   }, [employees, attendances]);
 
   const totalPengeluaran = payrollData.reduce((acc, row) => acc + row.totalGaji, 0);
   const totalHariKerja = payrollData.reduce((acc, row) => acc + row.totalHadir, 0);
+  const sedangMemuat = loadEmp || loadAtt;
 
   function setPreset(tipe: "biweekly" | "monthly") {
-    if (tipe === "biweekly") {
-      const p = getBiweeklyPeriod();
-      setDari(p.dari);
-      setSampai(p.sampai);
-    } else {
-      const p = getMonthlyPeriod();
-      setDari(p.dari);
-      setSampai(p.sampai);
-    }
+    const p = tipe === "biweekly" ? getBiweeklyPeriod() : getMonthlyPeriod();
+    setDari(p.dari);
+    setSampai(p.sampai);
   }
 
   function exportPayrollCsv() {
@@ -188,237 +185,296 @@ function GajiPage() {
     downloadCsv(`rekap-gaji-${dari}-sd-${sampai}.csv`, csv);
   }
 
-  function printSlip() {
-    window.print();
-  }
-
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <DollarSign className="size-6 text-emerald-600" /> Penggajian (Skema Gaji Harian)
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Akumulasi gaji berdasarkan jumlah kehadiran riil: <span className="font-semibold text-foreground">Hari Hadir × Tarif Harian</span>.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={exportPayrollCsv} disabled={payrollData.length === 0}>
-            <Download className="size-4 mr-1.5" /> Export Rekap CSV
+    <div className="mx-auto max-w-6xl space-y-5 sm:space-y-6">
+      <PageHeader
+        title="Penggajian Harian"
+        icon={DollarSign}
+        subtitle={
+          <>
+            Gaji dihitung dari kehadiran riil:{" "}
+            <span className="font-semibold text-foreground">hari hadir × tarif harian</span>.
+          </>
+        }
+        actions={
+          <Button
+            variant="outline"
+            onClick={exportPayrollCsv}
+            disabled={payrollData.length === 0}
+            className="shrink-0"
+          >
+            <Download className="size-4" aria-hidden /> Export Rekap CSV
           </Button>
-        </div>
-      </header>
+        }
+      />
 
-      {/* Filter Periode & Presets */}
-      <div className="rounded-2xl border bg-card p-4 sm:p-5 shadow-[var(--shadow-soft)] space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Calendar className="size-4 text-primary" />
-            <span className="text-sm font-semibold">Tentukan Periode Penggajian:</span>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setPreset("biweekly")}>
-              Periode 2 Minggu Ini
+      <div className="space-y-4 rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)] sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Calendar className="size-4 text-primary" aria-hidden /> Periode penggajian
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="secondary" onClick={() => setPreset("biweekly")} className="shrink-0">
+              2 Minggu Ini
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => setPreset("monthly")}>
-              1 Bulan Penuh Ini
+            <Button variant="secondary" onClick={() => setPreset("monthly")} className="shrink-0">
+              1 Bulan Penuh
             </Button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="dari">Dari Tanggal</Label>
             <Input id="dari" type="date" value={dari} onChange={(e) => setDari(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="sampai">Sampai Tanggal</Label>
-            <Input id="sampai" type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} />
+            <Input
+              id="sampai"
+              type="date"
+              value={sampai}
+              onChange={(e) => setSampai(e.target.value)}
+            />
           </div>
         </div>
       </div>
 
-      {/* Ringkasan Biaya Payroll */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)]">
-          <p className="text-xs text-muted-foreground">Total Pengeluaran Gaji Periode Ini</p>
-          <p className="mt-2 text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
-            {formatRupiah(totalPengeluaran)}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Total pengeluaran periode ini</p>
+          <p className="mt-1.5 font-mono text-xl font-bold text-emerald-700 sm:text-2xl dark:text-emerald-400">
+            {sedangMemuat ? "–" : formatRupiah(totalPengeluaran)}
           </p>
         </div>
-        <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)]">
-          <p className="text-xs text-muted-foreground">Total Hari Masuk Karyawan</p>
-          <p className="mt-2 text-2xl font-bold font-mono text-foreground">
-            {totalHariKerja} <span className="text-sm font-normal text-muted-foreground">hari kehadiran</span>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Total hari masuk</p>
+          <p className="mt-1.5 font-mono text-xl font-bold text-foreground sm:text-2xl">
+            {sedangMemuat ? "–" : totalHariKerja}{" "}
+            <span className="font-sans text-sm font-normal text-muted-foreground">hari</span>
           </p>
         </div>
-        <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)]">
-          <p className="text-xs text-muted-foreground">Karyawan Aktif Berhak Gaji</p>
-          <p className="mt-2 text-2xl font-bold font-mono text-foreground">
-            {employees.length} <span className="text-sm font-normal text-muted-foreground">orang</span>
+        <div className="rounded-2xl border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Karyawan aktif berhak gaji</p>
+          <p className="mt-1.5 font-mono text-xl font-bold text-foreground sm:text-2xl">
+            {sedangMemuat ? "–" : employees.length}{" "}
+            <span className="font-sans text-sm font-normal text-muted-foreground">orang</span>
           </p>
         </div>
       </div>
 
-      {/* Tabel Rincian Gaji Karyawan */}
-      <div className="rounded-2xl border bg-card shadow-[var(--shadow-soft)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b bg-muted/40 text-xs font-semibold uppercase text-muted-foreground">
-              <tr>
-                <th className="px-5 py-3.5">Karyawan & Posisi</th>
-                <th className="px-5 py-3.5">Tarif Harian</th>
-                <th className="px-5 py-3.5 text-center">Hari Hadir</th>
-                <th className="px-5 py-3.5">Rincian Status</th>
-                <th className="px-5 py-3.5 text-right">Total Gaji</th>
-                <th className="px-5 py-3.5 text-right">Slip</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {loadEmp || loadAtt ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
-                    Menghitung kalkulasi penggajian...
-                  </td>
-                </tr>
-              ) : payrollData.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
-                    Belum ada data karyawan aktif.
-                  </td>
-                </tr>
-              ) : (
-                payrollData.map((row) => (
-                  <tr key={row.employee.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-5 py-3.5">
-                      <p className="font-semibold text-foreground">{row.employee.full_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        NIK: <span className="font-mono">{row.employee.nik}</span> · {row.employee.department} ({row.employee.position})
-                      </p>
-                    </td>
-                    <td className="px-5 py-3.5 font-mono text-sm text-foreground">
-                      {formatRupiah(Number(row.employee.daily_salary))}
-                      <span className="text-xs text-muted-foreground block font-sans">/ hari</span>
-                    </td>
-                    <td className="px-5 py-3.5 text-center">
-                      <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-primary/10 text-primary font-bold text-sm">
-                        {row.totalHadir} Hari
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 text-xs text-muted-foreground">
-                      <p>Hadir Tepat: <span className="text-emerald-600 font-semibold">{row.tepatWaktu}</span></p>
-                      <p>Terlambat: <span className="text-amber-600 font-semibold">{row.terlambat}</span></p>
-                      {(row.izin > 0 || row.sakit > 0 || row.alfa > 0) && (
-                        <p className="text-[11px] text-slate-400">
-                          (Izin: {row.izin}, Sakit: {row.sakit}, Alfa: {row.alfa})
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5 text-right font-mono font-bold text-base text-emerald-600 dark:text-emerald-400">
-                      {formatRupiah(row.totalGaji)}
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSlipModal(row)}
-                        className="text-xs"
-                      >
-                        <FileText className="size-3.5 mr-1" /> Slip Gaji
-                      </Button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal / Dialog Cetak Slip Gaji */}
-      <Dialog open={!!slipModal} onOpenChange={(open) => !open && setSlipModal(null)}>
-        <DialogContent className="sm:max-w-md print:shadow-none print:border-none">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>Slip Gaji Karyawan</span>
-              <Button size="sm" variant="outline" onClick={printSlip} className="print:hidden">
-                <Printer className="size-4 mr-1.5" /> Cetak / PDF
+      <DataList
+        rows={payrollData}
+        rowKey={(row) => row.employee.id}
+        loading={sedangMemuat}
+        loadingLabel="Menghitung kalkulasi penggajian..."
+        error={empGagal || attGagal ? "Data penggajian tidak bisa dimuat dari server." : null}
+        onRetry={() => {
+          void refetchEmp();
+          void refetchAtt();
+        }}
+        header={
+          <p className="text-xs text-muted-foreground">
+            Rincian gaji {payrollData.length} karyawan aktif · {formatTanggal(dari)} s/d{" "}
+            {formatTanggal(sampai)}
+          </p>
+        }
+        columns={[
+          {
+            header: "Karyawan",
+            render: (row) => (
+              <>
+                <p className="font-semibold text-foreground">{row.employee.full_name}</p>
+                <p className="font-mono text-xs text-muted-foreground">{row.employee.nik}</p>
+              </>
+            ),
+          },
+          {
+            header: "Tarif Harian",
+            render: (row) => (
+              <>
+                <span className="font-mono text-sm">
+                  {formatRupiah(Number(row.employee.daily_salary))}
+                </span>
+                <span className="block text-xs text-muted-foreground">/ hari</span>
+              </>
+            ),
+          },
+          {
+            header: "Hari Hadir",
+            align: "center",
+            render: (row) => (
+              <span className="inline-flex items-center justify-center rounded-full bg-primary/10 px-3 py-1 font-mono text-sm font-bold text-primary">
+                {row.totalHadir}
+              </span>
+            ),
+          },
+          {
+            header: "Rincian Status",
+            render: (row) => (
+              <div className="space-y-0.5 text-xs">
+                <p className="text-emerald-700 dark:text-emerald-400">
+                  Tepat waktu: {row.tepatWaktu}
+                </p>
+                <p className="text-amber-700 dark:text-amber-400">Terlambat: {row.terlambat}</p>
+                {row.izin + row.sakit + row.alfa > 0 ? (
+                  <p className="text-muted-foreground">
+                    Izin {row.izin} · Sakit {row.sakit} · Alfa {row.alfa}
+                  </p>
+                ) : null}
+              </div>
+            ),
+          },
+          {
+            header: "Total Gaji",
+            align: "right",
+            render: (row) => (
+              <span className="font-mono text-base font-bold text-emerald-700 dark:text-emerald-400">
+                {formatRupiah(row.totalGaji)}
+              </span>
+            ),
+          },
+          {
+            header: "Slip",
+            align: "right",
+            render: (row) => (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSlipModal(row)}
+                aria-label={`Lihat slip gaji ${row.employee.full_name}`}
+              >
+                <FileText className="size-3.5" aria-hidden /> Slip
               </Button>
-            </DialogTitle>
+            ),
+          },
+        ]}
+        renderCard={(row) => (
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground">{row.employee.full_name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {row.employee.department} · {row.employee.position}
+                </p>
+              </div>
+              <span className="shrink-0 font-mono text-base font-bold text-emerald-700 dark:text-emerald-400">
+                {formatRupiah(row.totalGaji)}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
+              <span>{formatRupiah(Number(row.employee.daily_salary))} / hari</span>
+              <span aria-hidden>·</span>
+              <span className="font-semibold text-foreground">{row.totalHadir} hari hadir</span>
+            </div>
+
+            <Button
+              variant="outline"
+              onClick={() => setSlipModal(row)}
+              className="w-full sm:w-auto"
+              aria-label={`Lihat slip gaji ${row.employee.full_name}`}
+            >
+              <FileText className="size-4" aria-hidden /> Lihat slip gaji
+            </Button>
+          </div>
+        )}
+        empty={
+          <div className="flex flex-col items-center gap-2 px-5 py-12 text-center">
+            <div className="flex size-11 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+              <UserX className="size-5" aria-hidden />
+            </div>
+            <p className="text-sm font-semibold text-foreground">Belum ada karyawan aktif</p>
+            <p className="max-w-sm text-xs leading-relaxed text-muted-foreground text-pretty">
+              Tambahkan karyawan di halaman Data Karyawan agar penggajian bisa dihitung.
+            </p>
+          </div>
+        }
+      />
+
+      <Dialog open={!!slipModal} onOpenChange={(open) => !open && setSlipModal(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="pr-8">Slip Gaji Karyawan</DialogTitle>
           </DialogHeader>
 
-          {slipModal && (
-            <div id="slip-gaji-content" className="p-4 border rounded-xl bg-card space-y-4 text-sm">
-              <div className="text-center border-b pb-3">
-                <h3 className="font-bold text-base uppercase text-foreground">
+          {slipModal ? (
+            <div id="slip-area" className="space-y-4 rounded-xl border bg-card p-4 text-sm">
+              <div className="border-b pb-3 text-center">
+                <h3 className="text-base font-bold uppercase text-foreground">
                   {settings?.company_name || "PT PERUSAHAAN"}
                 </h3>
-                <p className="text-xs text-muted-foreground">SLIP PENGGAJIAN HARIAN KARYAWAN</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Periode: {formatTanggal(dari)} s/d {formatTanggal(sampai)}
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Slip penggajian harian · {formatTanggal(dari)} s/d {formatTanggal(sampai)}
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-muted-foreground block">NIK / Nama:</span>
+              <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                <div className="min-w-0">
+                  <span className="block text-muted-foreground">NIK / Nama</span>
                   <span className="font-semibold text-foreground">
                     {slipModal.employee.nik} / {slipModal.employee.full_name}
                   </span>
                 </div>
-                <div>
-                  <span className="text-muted-foreground block">Departemen / Posisi:</span>
+                <div className="min-w-0">
+                  <span className="block text-muted-foreground">Departemen / Jabatan</span>
                   <span className="font-semibold text-foreground">
                     {slipModal.employee.department} - {slipModal.employee.position}
                   </span>
                 </div>
               </div>
 
-              <div className="border-t border-b py-3 space-y-2 text-xs">
-                <div className="flex justify-between items-center">
-                  <span>Tarif Gaji Harian</span>
-                  <span className="font-mono">{formatRupiah(Number(slipModal.employee.daily_salary))}</span>
+              <div className="space-y-2 border-y py-3 text-xs">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Tarif gaji harian</span>
+                  <span className="font-mono">
+                    {formatRupiah(Number(slipModal.employee.daily_salary))}
+                  </span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span>Total Kehadiran Kerja</span>
-                  <span className="font-semibold">{slipModal.totalHadir} Hari</span>
+                <div className="flex items-center justify-between gap-3">
+                  <span>Total kehadiran kerja</span>
+                  <span className="font-semibold">{slipModal.totalHadir} hari</span>
                 </div>
-                <div className="flex justify-between items-center text-muted-foreground pl-2 text-[11px]">
-                  <span>· Hadir Tepat Waktu</span>
+                <div className="flex items-center justify-between gap-3 pl-2 text-[11px] text-muted-foreground">
+                  <span>Hadir tepat waktu</span>
                   <span>{slipModal.tepatWaktu} hari</span>
                 </div>
-                <div className="flex justify-between items-center text-muted-foreground pl-2 text-[11px]">
-                  <span>· Hadir Terlambat</span>
+                <div className="flex items-center justify-between gap-3 pl-2 text-[11px] text-muted-foreground">
+                  <span>Hadir terlambat</span>
                   <span>{slipModal.terlambat} hari</span>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center pt-1 font-bold text-base">
-                <span>TOTAL GAJI DITERIMA:</span>
-                <span className="font-mono text-emerald-600 dark:text-emerald-400">
+              <div className="flex items-center justify-between gap-3 pt-1 text-base font-bold">
+                <span>Total gaji diterima</span>
+                <span className="font-mono text-emerald-700 dark:text-emerald-400">
                   {formatRupiah(slipModal.totalGaji)}
                 </span>
               </div>
 
-              <div className="pt-6 grid grid-cols-2 text-center text-xs text-muted-foreground border-t">
+              <div className="grid grid-cols-2 gap-3 border-t pt-8 text-center text-xs text-muted-foreground">
                 <div>
-                  <p>Diterima Oleh,</p>
-                  <p className="mt-12 font-semibold text-foreground underline">
+                  <p>Diterima oleh</p>
+                  <p className="mt-10 font-semibold text-foreground">
                     {slipModal.employee.full_name}
                   </p>
                 </div>
                 <div>
-                  <p>Disetujui Oleh (HRD),</p>
-                  <p className="mt-12 font-semibold text-foreground underline">
-                    Finance & HRD
-                  </p>
+                  <p>Disetujui oleh (HRD)</p>
+                  <p className="mt-10 font-semibold text-foreground">Finance &amp; HRD</p>
                 </div>
               </div>
             </div>
-          )}
+          ) : null}
+
+          <DialogFooter className="print:hidden">
+            <Button variant="outline" onClick={() => setSlipModal(null)}>
+              Tutup
+            </Button>
+            <Button onClick={() => window.print()}>
+              <Printer className="size-4" aria-hidden /> Cetak / PDF
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

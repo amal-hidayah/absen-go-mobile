@@ -175,40 +175,40 @@
   display: none !important;
 }
 
-/* Pengaturan Cetak (Print) Khusus */
+/* Pengaturan Cetak (Print) Khusus: hanya slip gaji yang ikut tercetak */
 @media print {
   body * {
     visibility: hidden;
   }
-  
+
   body {
     background-color: white !important;
   }
 
-  /* Mengatasi Radix UI yang mengunci scroll saat modal terbuka */
+  /* Radix mengunci scroll dan menggeser dialog ke tengah layar */
   body[data-scroll-locked] {
     overflow: visible !important;
     position: static !important;
   }
 
-  #print-area, #print-area * {
-    visibility: visible;
-  }
-  
-  #print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    display: grid !important;
-    gap: 12px !important;
-    grid-template-columns: repeat(4, 1fr) !important;
+  [role="dialog"] {
+    position: static !important;
+    transform: none !important;
+    translate: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    padding: 0 !important;
   }
 
-  /* Menghindari kartu terpotong di tengah antar halaman */
-  #print-area > div {
+  #slip-area,
+  #slip-area * {
+    visibility: visible;
+  }
+
+  #slip-area {
     page-break-inside: avoid;
     break-inside: avoid;
-    border: 1px solid #ccc !important;
   }
 }
