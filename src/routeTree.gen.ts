@@ -12,7 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as KioskRouteImport } from './routes/kiosk'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedGajiRouteImport } from './routes/_authenticated/gaji'
+import { Route as AuthenticatedKaryawanRouteImport } from './routes/_authenticated/karyawan'
 import { Route as AuthenticatedPengaturanRouteImport } from './routes/_authenticated/pengaturan'
 import { Route as AuthenticatedRekapRouteImport } from './routes/_authenticated/rekap'
 import { Route as AuthenticatedScanRouteImport } from './routes/_authenticated/scan'
@@ -32,9 +35,24 @@ const AuthRoute = AuthRouteImport.update({
   path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
+const KioskRoute = KioskRouteImport.update({
+  id: '/kiosk',
+  path: '/kiosk',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedGajiRoute = AuthenticatedGajiRouteImport.update({
+  id: '/gaji',
+  path: '/gaji',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedKaryawanRoute = AuthenticatedKaryawanRouteImport.update({
+  id: '/karyawan',
+  path: '/karyawan',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedPengaturanRoute = AuthenticatedPengaturanRouteImport.update({
@@ -61,7 +79,10 @@ const AuthenticatedSiswaRoute = AuthenticatedSiswaRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/kiosk': typeof KioskRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/gaji': typeof AuthenticatedGajiRoute
+  '/karyawan': typeof AuthenticatedKaryawanRoute
   '/pengaturan': typeof AuthenticatedPengaturanRoute
   '/rekap': typeof AuthenticatedRekapRoute
   '/scan': typeof AuthenticatedScanRoute
@@ -70,7 +91,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
+  '/kiosk': typeof KioskRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/gaji': typeof AuthenticatedGajiRoute
+  '/karyawan': typeof AuthenticatedKaryawanRoute
   '/pengaturan': typeof AuthenticatedPengaturanRoute
   '/rekap': typeof AuthenticatedRekapRoute
   '/scan': typeof AuthenticatedScanRoute
@@ -81,7 +105,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
+  '/kiosk': typeof KioskRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/gaji': typeof AuthenticatedGajiRoute
+  '/_authenticated/karyawan': typeof AuthenticatedKaryawanRoute
   '/_authenticated/pengaturan': typeof AuthenticatedPengaturanRoute
   '/_authenticated/rekap': typeof AuthenticatedRekapRoute
   '/_authenticated/scan': typeof AuthenticatedScanRoute
@@ -90,16 +117,37 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/auth' | '/dashboard' | '/pengaturan' | '/rekap' | '/scan' | '/siswa'
+    | '/'
+    | '/auth'
+    | '/kiosk'
+    | '/dashboard'
+    | '/gaji'
+    | '/karyawan'
+    | '/pengaturan'
+    | '/rekap'
+    | '/scan'
+    | '/siswa'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/auth' | '/dashboard' | '/pengaturan' | '/rekap' | '/scan' | '/siswa'
+    | '/'
+    | '/auth'
+    | '/kiosk'
+    | '/dashboard'
+    | '/gaji'
+    | '/karyawan'
+    | '/pengaturan'
+    | '/rekap'
+    | '/scan'
+    | '/siswa'
   id:
     | '__root__'
     | '/'
     | '/_authenticated'
     | '/auth'
+    | '/kiosk'
     | '/_authenticated/dashboard'
+    | '/_authenticated/gaji'
+    | '/_authenticated/karyawan'
     | '/_authenticated/pengaturan'
     | '/_authenticated/rekap'
     | '/_authenticated/scan'
@@ -110,6 +158,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthenticatedRouteRoute: typeof AuthenticatedRouteRouteWithChildren
   AuthRoute: typeof AuthRoute
+  KioskRoute: typeof KioskRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -135,11 +184,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/kiosk': {
+      id: '/kiosk'
+      path: '/kiosk'
+      fullPath: '/kiosk'
+      preLoaderRoute: typeof KioskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/gaji': {
+      id: '/_authenticated/gaji'
+      path: '/gaji'
+      fullPath: '/gaji'
+      preLoaderRoute: typeof AuthenticatedGajiRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/karyawan': {
+      id: '/_authenticated/karyawan'
+      path: '/karyawan'
+      fullPath: '/karyawan'
+      preLoaderRoute: typeof AuthenticatedKaryawanRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/pengaturan': {
@@ -175,6 +245,8 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedGajiRoute: typeof AuthenticatedGajiRoute
+  AuthenticatedKaryawanRoute: typeof AuthenticatedKaryawanRoute
   AuthenticatedPengaturanRoute: typeof AuthenticatedPengaturanRoute
   AuthenticatedRekapRoute: typeof AuthenticatedRekapRoute
   AuthenticatedScanRoute: typeof AuthenticatedScanRoute
@@ -183,6 +255,8 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedGajiRoute: AuthenticatedGajiRoute,
+  AuthenticatedKaryawanRoute: AuthenticatedKaryawanRoute,
   AuthenticatedPengaturanRoute: AuthenticatedPengaturanRoute,
   AuthenticatedRekapRoute: AuthenticatedRekapRoute,
   AuthenticatedScanRoute: AuthenticatedScanRoute,
@@ -196,6 +270,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthenticatedRouteRoute: AuthenticatedRouteRouteWithChildren,
   AuthRoute: AuthRoute,
+  KioskRoute: KioskRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
