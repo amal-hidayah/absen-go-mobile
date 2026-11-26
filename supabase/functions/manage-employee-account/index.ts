@@ -61,11 +61,18 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { data: akun } = await admin
+    const { data: akun, error: akunErr } = await admin
       .from("login_accounts")
       .select("role, active")
       .eq("user_id", userData.user.id)
       .maybeSingle();
+
+    if (akunErr) {
+      return json(
+        { error: `Gagal memeriksa peran admin: ${akunErr.message}` },
+        500,
+      );
+    }
 
     if (!akun || akun.role !== "admin" || !akun.active) {
       return json({ error: "Hanya admin yang boleh menambah atau mengubah akun karyawan." }, 403);

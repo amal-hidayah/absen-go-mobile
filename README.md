@@ -1,110 +1,105 @@
-# AbsenGo — Sistem Presensi Karyawan & Penggajian Harian
+# AbsenGo — Presensi Karyawan & Penggajian Harian
 
-Aplikasi absensi kantor berbasis QR dinamis dengan penggajian harian, dibangun dengan
-[TanStack Start](https://tanstack.com/start) + Supabase.
+**Tema:** tertib, cepat, lapangan — gerbang kantor dan jam kerja.
 
-## Fitur
+Tema ini dipilih karena absensi terjadi di gerbang, bukan di meja kerja: karyawan butuh satu tindakan yang jelas dan selesai dalam beberapa detik. Permukaan netral dengan aksen teal menjaga layar tetap tenang saat dipakai di terang hari, sementara jam dan jarak memakai angka tabular supaya mudah dibaca sekilas. Sora untuk judul dan Plus Jakarta Sans untuk isi memberi kesan operasional tanpa berubah menjadi tampilan korporat yang kaku.
 
-- **Login username + password** — tanpa email. Username admin = email akun Supabase;
-  username karyawan diberikan oleh admin.
-- **Model akun dua jalur** — akun yang dibuat di Supabase Auth otomatis jadi **admin**;
-  karyawan dibuat dari **Panel Admin → Data Karyawan** (username + password ditentukan
-  admin, akun Supabase Auth-nya dibuat otomatis lewat Edge Function).
-- **Role & panel otomatis** — login admin membuka panel admin, login karyawan membuka panel karyawan.
-- **Scan presensi** — QR di layar kiosk berubah tiap 5 detik; karyawan scan untuk absen masuk/pulang.
-- **Layar kiosk** (`/kiosk`) — layar monitor kantor yang menampilkan QR + feed presensi realtime
-  (khusus admin).
-- **Dashboard** — rekap kehadiran harian, input presensi manual (izin/sakit/alfa) oleh admin.
-- **Data karyawan** — CRUD karyawan + akun loginnya (buat, ganti kata sandi, hapus, aktif/nonaktif).
-- **Penggajian** — estimasi gaji dari jumlah hari hadir × tarif harian.
-- **Rekap** — riwayat kehadiran per periode, filter departemen, ekspor CSV.
-- **Pengaturan kantor** — nama perusahaan, jam masuk/pulang, toleransi keterlambatan, `qr_secret`.
+## Pemetaan model
 
-## Menjalankan secara lokal
+| Model | Peran | Fungsi di aplikasi |
+| --- | --- | --- |
+| `Employee` | Data utama | Identitas, divisi, jabatan, tarif harian, dan status aktif karyawan. Menjadi sumber daftar karyawan, rekap, dan gaji. |
+| `Attendance` | Data utama | Catatan kehadiran per tanggal: jam masuk, jam pulang, status, dan keterlambatan. Menentukan apakah suatu hari dihitung sebagai upah. |
+| `AttendanceEvidence` | Data aksi | Jejak setiap aksi absen: foto selfie, koordinat, akurasi GPS, jarak ke kantor, dan flag lokasi palsu. |
+| `LoginAccount` | Data aksi | Pemetaan username ke akun Auth, peran, dan karyawan. Baris ini dibuat atau diubah lewat aksi admin pada Edge Function. |
+| `CompanySettings` | Data informasi | Nama perusahaan, jam masuk/pulang, toleransi terlambat, titik kantor, radius, dan batas akurasi. Dibaca sebelum absen diterima. |
+| `UserProfile` | Data informasi | Gabungan akun Auth, `LoginAccount`, dan `Employee` untuk sesi berjalan; menentukan panel admin atau karyawan. |
+
+Data utama adalah objek yang dikelola setiap hari. Data aksi adalah hasil dari tindakan pengguna. Data informasi adalah konteks yang dibaca supaya keputusan di layar benar.
+
+## Fitur buatan sendiri
+
+- **Kamera selfie in-app.** Tombol absen membuka preview kamera depan di dalam aplikasi, bukan galeri. Foto dikompres ke maksimal 1080 px dengan batas 5 MB sebelum diunggah.
+- **Gerbang digital.** Absen hanya diterima jika GPS berada dalam radius kantor, akurasi sesuai batas, dan lokasi bukan hasil mock.
+- **Aturan jam di server.** `record_attendance_geo` memanggil `absengo_record_clock` sehingga masuk/pulang, toleransi terlambat, dan gaji dihitung di database, bukan di perangkat.
+- **Akun karyawan oleh admin.** Edge Function `manage-employee-account` membuat akun Auth, baris karyawan, dan baris login sekaligus; signup publik tetap mati.
+- **Panel terbagi.** Karyawan melihat 3 tab: Beranda, Absen, Riwayat. Admin melihat 5 tab: Beranda, Karyawan, Gaji, Rekap, Setelan.
+- **Penggajian harian.** Gaji dihitung dari hari yang lengkap (masuk dan pulang) dikali tarif harian; rekap bisa diekspor ke CSV.
+
+## Screenshot
+
+Screenshot diambil dari APK release yang dipasang di HP melalui kabel USB.
+
+### Tab karyawan
+
+- **Beranda** — ringkasan profil, jam masuk, dan riwayat terbaru.
+
+  ![Beranda karyawan](docs/screenshots/beranda-karyawan.png)
+
+- **Absen** — status radius lokasi dan bukti selfie.
+
+  ![Tab absen karyawan](docs/screenshots/absen-karyawan.png)
+
+- **Riwayat** — presensi bulanan beserta status dan gaji.
+
+  ![Tab riwayat karyawan](docs/screenshots/riwayat-karyawan.png)
+
+### Tab admin
+
+- **Beranda** — ringkasan kehadiran hari ini dan daftar karyawan yang sudah presensi.
+
+  ![Beranda admin](docs/screenshots/beranda-admin.png)
+
+- **Karyawan** — daftar karyawan, divisi, dan tarif gaji harian.
+
+  ![Tab karyawan admin](docs/screenshots/karyawan-admin.png)
+
+- **Gaji** — estimasi upah per periode berdasarkan hari hadir lengkap.
+
+  ![Tab gaji admin](docs/screenshots/gaji-admin.png)
+
+- **Rekap** — catatan presensi per tanggal beserta statusnya.
+
+  ![Tab rekap admin](docs/screenshots/rekap-admin.png)
+
+- **Setelan** — jam kerja, titik lokasi kantor, radius geofence, dan batas akurasi.
+
+  ![Tab setelan admin](docs/screenshots/setelan-admin.png)
+
+### Beranda sebelum dan sesudah presensi tercatat
+
+| Kondisi | Tampilan | Screenshot |
+| --- | --- | --- |
+| Sebelum | Status `Belum absen`, jam masuk `-`, belum ada riwayat bulan ini. | ![Beranda sebelum presensi](docs/screenshots/beranda-sebelum-presensi.png) |
+| Sesudah | Status `Terlambat`, jam masuk `10:29`, bukti selfie tersimpan, dan riwayat bulan ini muncul. | ![Beranda sesudah presensi](docs/screenshots/beranda-sesudah-presensi.png) |
+
+## Hasil `flutter test`
+
+```text
+00:00 +0: loading C:/Users/MY THINKPAD/Documents/Absen Go Mobile/test/widget_test.dart
+00:00 +0: Core Utilities Test CurrencyFormat formats Indonesian Rupiah correctly
+00:00 +1: Core Utilities Test JakartaTime preset 2 minggu dan 1 bulan return valid dates
+00:00 +2: Core Utilities Test CsvGenerator builds valid UTF-8 BOM CSV with escaped quotes
+00:00 +3: Widget Tests StatusBadge renders correctly with contrast compliant styling
+00:01 +4: Widget Tests LoginScreen renders username, password, and submit button
+00:02 +5: All tests passed!
+```
+
+Lima pengujian lulus, tanpa kegagalan.
+
+## Menjalankan proyek
 
 ```sh
-npm install
-npm run dev
+flutter pub get
+flutter run
 ```
 
-Variabel lingkungan (isi `.env`):
-
-```
-VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
-```
-
-## Setup database (WAJIB, sekali saja)
-
-Script schema ada di [`schema database/paste di sql.txt`](schema%20database/paste%20di%20sql.txt)
-(salinan yang sama ada di `supabase/migrations/20261001090000_absengo_corporate_presensi.sql`).
-
-1. Supabase Dashboard → **SQL Editor** → New query → paste seluruh isi file → **Run**.
-2. **Deploy Edge Function** (untuk membuat akun karyawan dari panel admin):
-   - Supabase Dashboard → **Edge Functions** → Deploy new function → nama
-     `manage-employee-account` → paste isi `supabase/functions/manage-employee-account/index.ts` → Deploy.
-   - (Alternatif lewat CLI: `supabase functions deploy manage-employee-account`)
-3. **Matikan signup publik** — Supabase → Authentication → Sign In / Providers → Email →
-   matikan *Allow new users to sign up*. Ini **wajib**, karena setiap akun Supabase Auth
-   otomatis menjadi admin.
-4. Buat akun admin pertama: Supabase Dashboard → **Authentication → Users** → *Add user*
-   (email + password). Trigger database otomatis mendaftarkannya sebagai admin.
-5. Login di aplikasi memakai **email lengkap** akun tersebut sebagai username.
-
-Setelah script dijalankan, tabel yang tersedia:
-
-| Tabel | Isi |
-| --- | --- |
-| `staff/employees` | Data karyawan + tarif harian |
-| `company_attendance` | Presensi harian (clock in/out, status, keterlambatan) |
-| `company_settings` | Jam kerja, toleransi, `qr_secret` (selalu 1 baris) |
-| `login_accounts` | Pemetaan username → auth user → role & karyawan |
-
-Script ini juga menghapus sisa tabel versi sekolah (`students`, `attendance`, `settings`, `profiles`, `user_roles`) yang tidak lagi dipakai aplikasi.
-
-## Alur login
-
-| Tipe akun | Dibuat di | Username | Panel |
-| --- | --- | --- | --- |
-| Admin | Supabase Authentication (dashboard) | email lengkap akun | Panel admin |
-| Karyawan | Panel Admin → Data Karyawan | ditentukan admin | Panel karyawan |
-
-Karyawan dibuat lewat Edge Function `manage-employee-account` yang:
-- membuat akun Supabase Auth (email yang dimasukkan admin) + baris `employees` + baris `login_accounts` sekaligus;
-- membatasi diri hanya untuk admin (verifikasi JWT + cek role);
-- dapat mengganti kata sandi, menonaktifkan akun, dan menghapus akun (termasuk user Auth-nya).
-
-## Catatan keamanan
-
-- **Role dua jalur.** Akun dari Supabase Auth = admin (otomatis via trigger).
-  Karyawan dibuat dari panel admin dan role-nya `employee`. `login_accounts` hanya
-  bisa ditulis lewat Edge Function (service role), bukan dari aplikasi client.
-- **RLS ketat.** Hanya admin yang bisa mengubah `employees` dan `company_settings`;
-  karyawan hanya bisa membaca/menulis baris presensi miliknya sendiri. `anon` tidak
-  punya hak akses ke tabel ini.
-- **Signup publik wajib dimatikan** — kalau tidak, siapa pun bisa daftar dan langsung
-  menjadi admin. (Supabase → Authentication → Sign In / Providers → Email)
-- **Known limitation — `qr_secret`.** Verifikasi QR berjalan di browser, jadi `qr_secret`
-  sampai ke perangkat karyawan. Secara teknis karyawan bisa membuat QR sendiri di luar
-  kantor. Untuk menutup ini, verifikasi QR perlu dipindahkan ke Supabase Edge Function
-  (server-side) sehingga hanya hash QR yang dikirim ke database.
-
-## Development
+Untuk APK:
 
 ```sh
-npm run dev      # server pengembangan
-npm run build    # build produksi
-npm run preview  # preview hasil build
-npm run lint     # eslint + prettier
-npm run format   # prettier --write
+flutter build apk --release
 ```
 
-## Dibuat dengan
+Konfigurasi Supabase ada di `lib/app/env.dart`. Jalankan satu file SQL di `schema database/paste di sql project baru.sql` pada Supabase SQL Editor, deploy `manage-employee-account`, lalu pastikan **Allow new users to sign up** dimatikan. Kunci secret hanya dipakai Edge Function dan tidak pernah ditaruh di kode Flutter.
 
-This project was built with [Lovable](https://lovable.dev).
-
-- TanStack Start
-- TypeScript
-- React
-- Tailwind CSS
-- Supabase
+Dibangun dengan Flutter, Riverpod, GoRouter, Supabase, geolocator, dan camera.

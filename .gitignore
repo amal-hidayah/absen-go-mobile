@@ -34,3 +34,12 @@ dist-ssr
 
 # Supabase CLI (state lokal, jangan di-commit)
 supabase/.temp
+
+# Flutter / Dart generated
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+*.iml
